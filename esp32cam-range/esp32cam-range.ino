@@ -22,6 +22,11 @@
   const String stitle = "ESP32Cam-range";                // title of this sketch
 
   const String sversion = "21Sep20";                     // Sketch version
+
+  int minTimeBetweenTriggers = 3;                        // minimum time between triggers in seconds
+
+  int TimeBetweenStatus = 2;                             // minimum time between status light flash
+  
   
 
 // ---------------------------------------------------------------
@@ -35,9 +40,12 @@
 // Define general variables:
   long duration;
   int distance;
-  int imageCounter = 0;         // counter for file names on sdcard
-  int indicatorLED = 33;        // onboard LED (33)
-  int brightLED = 4;            // onboard bright LED (flash on pin 4)
+  int imageCounter = 0;             // counter for file names on sdcard
+  int indicatorLED = 33;            // onboard LED (33)
+  int brightLED = 4;                // onboard bright LED (flash on pin 4)
+  uint32_t lastTrigger = millis();  // last time camera was triggered
+  uint32_t lastStatus = millis();   // last time status light flashed
+  
 
 #include "soc/soc.h"                         // Used to disable brownout problems
 #include "soc/rtc_cntl_reg.h"      
@@ -104,8 +112,8 @@ void setup() {
     pinMode(echoPin, INPUT);
     pinMode(indicatorLED, OUTPUT);
     digitalWrite(indicatorLED,HIGH);
-    // pinMode(brightLED, OUTPUT);
-    // digitalWrite(brightLED,LOW);
+    pinMode(brightLED, OUTPUT);
+    digitalWrite(brightLED,LOW);
 
   // Turn-off the 'brownout detector'
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -124,16 +132,28 @@ void setup() {
 
 void loop() {
 
-  int tdist = readDistance();
-  Serial.println("Distance = " + String(tdist) + "cm");
+  // Read distance from sensor
+    int tdist = readDistance();    // distance in cm
+    String textDist = "Unk";       // distance reading as a string
+    if (tdist > 0) textDist = String(tdist) + "cm";
+    Serial.println("Distance = " + textDist);
 
-  // if distance is less than 30cm capture data
+  // if distance is less than 30cm 
   if (tdist < 30 && tdist > 0) {
-    storeImage(String(tdist) + "cm");        // capture and store a live image
-    delay(3000);    // wait 3 seconds
+    // if long enough since last trigger
+      if ((unsigned long)(millis() - lastTrigger) >= (minTimeBetweenTriggers * 1000)) { 
+        lastTrigger = millis();       // reset timer
+        storeImage(textDist);         // capture and store a live image
+      }
   }
-  
-  delay(200);
+
+  // flash ststus light to show all ok
+    if ((unsigned long)(millis() - lastStatus) >= (TimeBetweenStatus * 1000)) { 
+      lastStatus = millis();              // reset timer
+      digitalWrite(indicatorLED,LOW);     // led on
+    }
+    delay(100);
+    digitalWrite(indicatorLED,HIGH);     // led off
 }
 
 
@@ -155,7 +175,7 @@ int readDistance() {
   digitalWrite(trigPin, LOW);
   
   // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
-  duration = pulseIn(echoPin, HIGH);
+  duration = pulseIn(echoPin, HIGH, 25000);
   
   // Calculate the distance:
   distance = duration*0.034/2;
@@ -188,15 +208,15 @@ void flashLED(int reps) {
 
 byte storeImage(String iTitle) {
 
-  Serial.println("Storing image #" + String(imageCounter) + "to sd card");
+  Serial.println("Storing image #" + String(imageCounter) + " to sd card");
 
   fs::FS &fs = SD_MMC; 
 
   // capture live image from camera
   cameraImageSettings();                            // apply camera sensor settings
-  // digitalWrite(brightLED,HIGH);                     // turn flash on
+  digitalWrite(brightLED,HIGH);                     // turn flash on
   camera_fb_t *fb = esp_camera_fb_get();            // capture frame from camera
-  // digitalWrite(brightLED,LOW);                      // turn flash off
+  digitalWrite(brightLED,LOW);                      // turn flash off
   if (!fb) {
     Serial.println("Camera capture failed");
     flashLED(1);
