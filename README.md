@@ -1,4 +1,4 @@
-# ESP32Cam-range
+<p align="center"><img src="/images/esp32cam-range.jpg" width="90%"/></p>
 
 Cycle passing vehicle distance recorder using an ESP32cam module with JSN-SR04T ultrasonic distance sensor using Arduino IDE.
 
