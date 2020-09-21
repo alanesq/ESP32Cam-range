@@ -35,7 +35,9 @@
 // Define general variables:
   long duration;
   int distance;
-  int FlashLED = 33;    // pin with flash on
+  int imageCounter = 0;         // counter for file names on sdcard
+  int indicatorLED = 33;        // onboard LED (33)
+  int brightLED = 4;            // onboard bright LED (flash on pin 4)
 
 #include "soc/soc.h"                         // Used to disable brownout problems
 #include "soc/rtc_cntl_reg.h"      
@@ -64,6 +66,10 @@ void setup() {
     Serial.println("Starting - " + stitle + " - " + sversion);
     Serial.println(("---------------------------------------"));
 
+   // set up camera
+    Serial.print(("Initialising camera: "));
+    Serial.println(setupCameraHardware() ? "OK" : "ERR INIT");
+
    // start sd card
       if (!SD_MMC.begin("/sdcard", true)) {         // if loading sd card fails     
         // note: ("/sdcard", true) = 1 wire - see: https://www.reddit.com/r/esp32/comments/d71es9/a_breakdown_of_my_experience_trying_to_talk_to_an/
@@ -78,17 +84,28 @@ void setup() {
           while(1);  // stop
       } 
       uint16_t SDfreeSpace = (uint64_t)(SD_MMC.totalBytes() - SD_MMC.usedBytes()) / (1024 * 1024);
-      Serial.println("SD Card found, free space = " + String(SDfreeSpace) + "MB");  
+      Serial.println("SD Card found, free space = " + String(SDfreeSpace) + "MB");   
+
+  // discover number of files on sd card and set file counter accordingly
+    fs::FS &fs = SD_MMC; 
+    File root = fs.open("/");
+    while (true)
+    {
+      File entry =  root.openNextFile();
+      if (! entry) break;
+      imageCounter ++;    // increment image counter
+      entry.close();
+    }
+    root.close();
+    Serial.println("File count = " + String(imageCounter));
 
   // Define io pins
     pinMode(trigPin, OUTPUT);
     pinMode(echoPin, INPUT);
-    pinMode(FlashLED, OUTPUT);
-    digitalWrite(FlashLED,HIGH);
-
-   // set up camera
-    Serial.print(("Initialising camera: "));
-    Serial.println(setupCameraHardware() ? "OK" : "ERR INIT");
+    pinMode(indicatorLED, OUTPUT);
+    digitalWrite(indicatorLED,HIGH);
+    // pinMode(brightLED, OUTPUT);
+    // digitalWrite(brightLED,LOW);
 
   // Turn-off the 'brownout detector'
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -97,7 +114,7 @@ void setup() {
 
   flashLED(3);    // all ok
 
-  // storeImage();        // capture and store a live image
+  storeImage("startup");        // capture and store a live image
   
 }
 
@@ -110,9 +127,10 @@ void loop() {
   int tdist = readDistance();
   Serial.println("Distance = " + String(tdist) + "cm");
 
-  if (tdist == 111) {
-    storeImage();        // capture and store a live image
-    delay(3000);
+  // if distance is less than 30cm capture data
+  if (tdist < 30 && tdist > 0) {
+    storeImage(String(tdist) + "cm");        // capture and store a live image
+    delay(3000);    // wait 3 seconds
   }
   
   delay(200);
@@ -153,9 +171,9 @@ int readDistance() {
 
 void flashLED(int reps) {
     for(int x; x <= reps; x++) {
-      digitalWrite(FlashLED,LOW);
+      digitalWrite(indicatorLED,LOW);
       delay(500);
-      digitalWrite(FlashLED,HIGH);
+      digitalWrite(indicatorLED,HIGH);
       delay(500);
     }
 }
@@ -165,20 +183,20 @@ void flashLED(int reps) {
 
 
 // save image to sd card
-//    returns 1 if image saved ok
+//    returns 1 if image saved ok,  iTitle = add to end of title of file
 
 
-byte storeImage() {
+byte storeImage(String iTitle) {
 
-  Serial.println("Storing live image to sd card");
+  Serial.println("Storing image #" + String(imageCounter) + "to sd card");
 
   fs::FS &fs = SD_MMC; 
 
-  String SDfilename = "/test.jpg";
-
   // capture live image from camera
   cameraImageSettings();                            // apply camera sensor settings
+  // digitalWrite(brightLED,HIGH);                     // turn flash on
   camera_fb_t *fb = esp_camera_fb_get();            // capture frame from camera
+  // digitalWrite(brightLED,LOW);                      // turn flash off
   if (!fb) {
     Serial.println("Camera capture failed");
     flashLED(1);
@@ -186,6 +204,8 @@ byte storeImage() {
   }
 
   // save image
+    imageCounter ++;                                // increment image counter
+    String SDfilename = "/" + String(imageCounter) + "-" + iTitle + ".jpg";
     File file = fs.open(SDfilename, FILE_WRITE);
     if (!file) {
       Serial.println("Error: Failed to create file on sd-card: " + SDfilename);
@@ -200,7 +220,7 @@ byte storeImage() {
           return(0);
         }
         file.close();
-        flashLED(2);
+        // flashLED(2);
         return(1);
     }
 
