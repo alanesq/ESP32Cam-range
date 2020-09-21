@@ -6,5 +6,12 @@ The idea is to attach the sensor to the right side of a cycle and when any vehic
 was from the cycle along with a image of the passing vehicle.  
 
 This is curently a work in progress and not fully functional yet.
-If it proves to work as I hope the idea is that this can be used to collect some data on how close overtaking vehicles actually tend to get to cyclists.
+If it proves to work as I hope the idea is that this will be a very low cost way to collect some data on how close overtaking vehicles actually tend to get to cyclists.
+Cost to build:
+  ESP32Cam module 5ukp
+  Distance sensor 6ukp
+  SD Card under 10ukp
+ 
+
+
 
