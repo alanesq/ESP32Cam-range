@@ -1,15 +1,24 @@
  /*******************************************************************************************************************
  *            
  *     Cycling close pass distance recorder using 
- *     an Esp32camera module along with a JSN-SR04T ultrasonic distance sensor 
- *     
- *     - created using the Arduino IDE
+ *     an ESP32Cam module along with a JSN-SR04T ultrasonic distance sensor 
  *     
  *     
- *     led flashes at startup:
- *        1 = no sd card
- *        2 = invalid format sd card
- *        3 = all ok
+ *     - created using the Arduino IDE with ESP32 module installed      (no additional libraries required)
+ * 
+ * 
+ *     Four wires connect the esp32 to the ultrasonic sensor:
+ *          5v to 5v
+ *          GND to GND
+ *          13 to Trigger
+ *          12 to Echo
+ *     
+ *     
+ *     Status led flashes:
+ *        1 = no sd card found
+ *        2 = invalid format sd card found
+ *        3 = failed to capture image from camera
+ *        4 = failed to store image to sd card
  *            
  *            
  *******************************************************************************************************************/
@@ -22,40 +31,43 @@
   const String stitle = "ESP32Cam-range";                // title of this sketch
 
   const String sversion = "21Sep20";                     // Sketch version
-
-  int minTimeBetweenTriggers = 3;                        // minimum time between triggers in seconds
-
-  int TimeBetweenStatus = 2;                             // minimum time between status light flash
   
-  
+  int triggerDistance = 30;                              // distance below which will trigger an image capture in cm
 
+  int minTimeBetweenTriggers = 2;                        // minimum time between triggers in seconds
+
+  const int TimeBetweenStatus = 2;                       // time between status light flashes
+
+  bool flashRequired = 1;                                // If flash to be used when capturing image (1 = yes)
+
+  const int indicatorLED = 33;                           // onboard status LED pin (33)
+
+  const int brightLED = 4;                               // onboard flash LED pin (4)
+
+  
 // ---------------------------------------------------------------
 
-#include "camera.h"                 // camera related code
+#include "camera.h"                         // insert camera related code 
+
+#include "soc/soc.h"                        // Used to disable brownout problems
+#include "soc/rtc_cntl_reg.h"      
   
 // Define ultrasonic range sensor pins (jsn-sr04t)     13/12
-  #define trigPin 13
-  #define echoPin 12   
+  const int trigPin = 13;
+  const int echoPin = 12;
 
 // Define general variables:
-  long duration;
-  int distance;
-  int imageCounter = 0;             // counter for file names on sdcard
-  int indicatorLED = 33;            // onboard LED (33)
-  int brightLED = 4;                // onboard bright LED (flash on pin 4)
-  uint32_t lastTrigger = millis();  // last time camera was triggered
-  uint32_t lastStatus = millis();   // last time status light flashed
-  
-
-#include "soc/soc.h"                         // Used to disable brownout problems
-#include "soc/rtc_cntl_reg.h"      
+  long duration;                            // used by distance sensor
+  int distance;                             // used by distance sensor
+  int imageCounter;                         // counter for file names on sdcard
+  uint32_t lastTrigger = millis();          // last time camera was triggered
+  uint32_t lastStatus = millis();           // last time status light flashed
 
 // sd card - see https://randomnerdtutorials.com/esp32-cam-take-photo-save-microsd-card/
   #include "SD_MMC.h"
   #include <SPI.h>                       
-  #include <FS.h>                            // gives file access 
-  #define SD_CS 5                            // sd chip select pin
-  bool SD_Present;                           // flag if an sd card was found (0 = no)
+  #include <FS.h>                           // gives file access 
+  #define SD_CS 5                           // sd chip select pin
 
 
 // ******************************************************************************************************************
@@ -94,7 +106,7 @@ void setup() {
       uint16_t SDfreeSpace = (uint64_t)(SD_MMC.totalBytes() - SD_MMC.usedBytes()) / (1024 * 1024);
       Serial.println("SD Card found, free space = " + String(SDfreeSpace) + "MB");   
 
-  // discover number of files on sd card and set file counter accordingly
+  // discover number of files stored on sd card and set file counter accordingly
     fs::FS &fs = SD_MMC; 
     File root = fs.open("/");
     while (true)
@@ -120,14 +132,22 @@ void setup() {
 
   if (!psramFound()) Serial.println("Warning: No PSRam found");
 
-  flashLED(3);    // all ok
+  // flash to show started ok
+    digitalWrite(brightLED,HIGH);  // turn flash on
+    delay(200);
+    digitalWrite(brightLED,LOW);  // turn flash off
 
-  storeImage("startup");        // capture and store a live image
+  // storeImage("startup");        // capture and store a live image
   
 }
 
 
 // ******************************************************************************************************************
+
+
+// ----------------------------------------------------------------
+//   -LOOP     LOOP     LOOP     LOOP     LOOP     LOOP     LOOP
+// ----------------------------------------------------------------
 
 
 void loop() {
@@ -139,7 +159,7 @@ void loop() {
     Serial.println("Distance = " + textDist);
 
   // if distance is less than 30cm 
-  if (tdist < 30 && tdist > 0) {
+  if (tdist < triggerDistance && tdist > 0) {
     // if long enough since last trigger
       if ((unsigned long)(millis() - lastTrigger) >= (minTimeBetweenTriggers * 1000)) { 
         lastTrigger = millis();       // reset timer
@@ -147,12 +167,12 @@ void loop() {
       }
   }
 
-  // flash ststus light to show all ok
+  // flash status light to show sketch is running
     if ((unsigned long)(millis() - lastStatus) >= (TimeBetweenStatus * 1000)) { 
       lastStatus = millis();              // reset timer
       digitalWrite(indicatorLED,LOW);     // led on
     }
-    delay(100);
+    delay(80);
     digitalWrite(indicatorLED,HIGH);     // led off
 }
 
@@ -187,7 +207,7 @@ int readDistance() {
 // ******************************************************************************************************************
 
 
-// Flash the LED
+// Flash the status LED
 
 void flashLED(int reps) {
     for(int x; x <= reps; x++) {
@@ -203,10 +223,10 @@ void flashLED(int reps) {
 
 
 // save image to sd card
-//    returns 1 if image saved ok,  iTitle = add to end of title of file
+//    iTitle = add to end of title of file
 
 
-byte storeImage(String iTitle) {
+void storeImage(String iTitle) {
 
   Serial.println("Storing image #" + String(imageCounter) + " to sd card");
 
@@ -214,39 +234,37 @@ byte storeImage(String iTitle) {
 
   // capture live image from camera
   cameraImageSettings();                            // apply camera sensor settings
-  digitalWrite(brightLED,HIGH);                     // turn flash on
+  if (flashRequired) digitalWrite(brightLED,HIGH);  // turn flash on
   camera_fb_t *fb = esp_camera_fb_get();            // capture frame from camera
   digitalWrite(brightLED,LOW);                      // turn flash off
   if (!fb) {
     Serial.println("Camera capture failed");
-    flashLED(1);
-    return(0);
+    flashLED(3);
   }
 
+  // take a distance reading and add to file name
+    int tdist = readDistance();    // distance in cm
+    iTitle += "(" + String(tdist) + "cm)";
+  
   // save image
-    imageCounter ++;                                // increment image counter
-    String SDfilename = "/" + String(imageCounter) + "-" + iTitle + ".jpg";
-    File file = fs.open(SDfilename, FILE_WRITE);
+    imageCounter ++;                                                          // increment image counter
+    String SDfilename = "/" + String(imageCounter) + "-" + iTitle + ".jpg";   // create image file name
+    File file = fs.open(SDfilename, FILE_WRITE);                              // create file on sd card
     if (!file) {
       Serial.println("Error: Failed to create file on sd-card: " + SDfilename);
-      flashLED(1);
-      return(0);
+      flashLED(4);
     }
     else {
-        if (file.write(fb->buf, fb->len)) Serial.println("Saved image to sd card");
+        if (file.write(fb->buf, fb->len)) Serial.println("Saved image to sd card");   // save image to file
         else {
           Serial.println("Error: failed to save image to sd card");
-          flashLED(1);
-          return(0);
+          flashLED(4);
         }
-        file.close();
-        // flashLED(2);
-        return(1);
+        file.close();                // close image file on sd card
     }
-
+    esp_camera_fb_return(fb);        // return frame so memory can be released
 
 }
-
 
 
 // ******************************************************************************************************************
