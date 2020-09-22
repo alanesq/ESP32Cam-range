@@ -4,7 +4,8 @@
  *     an ESP32Cam module along with a JSN-SR04T ultrasonic distance sensor 
  *     
  *     
- *     - created using the Arduino IDE with ESP32 module installed      (no additional libraries required)
+ *     - created using the Arduino IDE with ESP32 module installed   (https://dl.espressif.com/dl/package_esp32_index.json)
+ *       No additional libraries required
  * 
  * 
  *     Four wires connect the esp32 to the ultrasonic sensor:
@@ -17,8 +18,10 @@
  *     Status led flashes:
  *        1 = no sd card found
  *        2 = invalid format sd card found
- *        3 = failed to capture image from camera
- *        4 = failed to store image to sd card
+ *        3 = failed to start camera
+ *        4 = failed to capture image from camera
+ *        5 = failed to store image to sd card
+ *        constant = Waiting for captured object to clear
  *            
  *            
  *******************************************************************************************************************/
@@ -30,9 +33,11 @@
 
   const String stitle = "ESP32Cam-range";                // title of this sketch
 
-  const String sversion = "21Sep20";                     // Sketch version
+  const String sversion = "22Sep20";                     // Sketch version
   
-  int triggerDistance = 30;                              // distance below which will trigger an image capture in cm
+  int triggerDistance = 150;                             // distance below which will trigger an image capture in cm
+
+  int numberReadings = 3;                                // number of readings to take from distance sensor to average together for final reading
 
   int minTimeBetweenTriggers = 2;                        // minimum time between triggers in seconds
 
@@ -57,8 +62,6 @@
   const int echoPin = 12;
 
 // Define general variables:
-  long duration;                            // used by distance sensor
-  int distance;                             // used by distance sensor
   int imageCounter;                         // counter for file names on sdcard
   uint32_t lastTrigger = millis();          // last time camera was triggered
   uint32_t lastStatus = millis();           // last time status light flashed
@@ -86,9 +89,21 @@ void setup() {
     Serial.println("Starting - " + stitle + " - " + sversion);
     Serial.println(("---------------------------------------"));
 
-   // set up camera
-    Serial.print(("Initialising camera: "));
-    Serial.println(setupCameraHardware() ? "OK" : "ERR INIT");
+  // Define io pins
+    pinMode(trigPin, OUTPUT);
+    pinMode(echoPin, INPUT);
+    pinMode(indicatorLED, OUTPUT);
+    digitalWrite(indicatorLED,HIGH);
+    pinMode(brightLED, OUTPUT);
+    digitalWrite(brightLED,LOW);
+
+    // set up camera
+      Serial.print(("Initialising camera: "));
+      if (setupCameraHardware()) Serial.println("OK");
+      else {
+        Serial.println("Error!");
+        flashLED(3); 
+      }
 
    // start sd card
       if (!SD_MMC.begin("/sdcard", true)) {         // if loading sd card fails     
@@ -119,14 +134,6 @@ void setup() {
     root.close();
     Serial.println("File count = " + String(imageCounter));
 
-  // Define io pins
-    pinMode(trigPin, OUTPUT);
-    pinMode(echoPin, INPUT);
-    pinMode(indicatorLED, OUTPUT);
-    digitalWrite(indicatorLED,HIGH);
-    pinMode(brightLED, OUTPUT);
-    digitalWrite(brightLED,LOW);
-
   // Turn-off the 'brownout detector'
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
@@ -153,18 +160,25 @@ void setup() {
 void loop() {
 
   // Read distance from sensor
-    int tdist = readDistance();    // distance in cm
+    int tdist = readDistance();    // read distance in cm
     String textDist = "Unk";       // distance reading as a string
     if (tdist > 0) textDist = String(tdist) + "cm";
     Serial.println("Distance = " + textDist);
 
-  // if distance is less than 30cm 
+  // if distance is less than the trigger distance
   if (tdist < triggerDistance && tdist > 0) {
-    // if long enough since last trigger
+    // if long enough since last trigger store image
       if ((unsigned long)(millis() - lastTrigger) >= (minTimeBetweenTriggers * 1000)) { 
-        lastTrigger = millis();       // reset timer
-        storeImage(textDist);         // capture and store a live image
+        lastTrigger = millis();                     // reset timer
+        digitalWrite(indicatorLED,LOW);             // indicator led on
+        storeImage(textDist);                       // capture and store a live image
       }
+    // wait for object to pass
+      digitalWrite(indicatorLED,LOW);               // indicator led on
+      while (readDistance() < triggerDistance) {
+        delay(200);
+      }
+      digitalWrite(indicatorLED,HIGH);              // indicator led off
   }
 
   // flash status light to show sketch is running
@@ -180,25 +194,41 @@ void loop() {
 // ******************************************************************************************************************
 
 
-// Read distance from ultrasound sensor
+// Read distance from ultrasound sensor - reads several times and take average
 //    returns result in centimeters
 
 int readDistance() {
+
+  int avrgDist = 0;                         // average of several readings
+  long duration =0;                         // duration of returning echo
+  int distance = 0;                         // calculated distance in cm
+  int noZeros = 0;                          // number of zero results (i.e. no return signal received)
+
+  for (int x=0; x < numberReadings; x++) {
   
-  // Clear the trigPin by setting it LOW:
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(5);
-  
- // Trigger the sensor by setting the trigPin high for 10 microseconds:
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  
-  // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
-  duration = pulseIn(echoPin, HIGH, 25000);
-  
-  // Calculate the distance:
-  distance = duration*0.034/2;
+    // Clear the trigPin by setting it LOW:
+      digitalWrite(trigPin, LOW);
+      delayMicroseconds(5);
+    
+   // Trigger the sensor by setting the trigPin high for 10 microseconds:
+      digitalWrite(trigPin, HIGH);
+      delayMicroseconds(10);
+      digitalWrite(trigPin, LOW);
+    
+    duration = pulseIn(echoPin, HIGH, 25000);      // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
+    
+    distance = duration*0.034/2;                   // Calculate the distance in cm
+
+    avrgDist += distance;                          // add to running total
+
+    if (distance == 0) noZeros++;                  // increment zero result counter (so it can be ignored)
+  }
+
+  // calculate average reading
+  distance = 0;
+  if ((numberReadings - noZeros) > 0) {                      // avoid divide by zero
+    distance = avrgDist / ( numberReadings - noZeros);       // calculate average
+  }
 
   return distance;
 }
@@ -210,12 +240,14 @@ int readDistance() {
 // Flash the status LED
 
 void flashLED(int reps) {
-    for(int x; x <= reps; x++) {
+  
+    for(int x=0; x < reps; x++) {
       digitalWrite(indicatorLED,LOW);
-      delay(500);
+      delay(1000);
       digitalWrite(indicatorLED,HIGH);
       delay(500);
     }
+    
 }
 
 
@@ -239,7 +271,7 @@ void storeImage(String iTitle) {
   digitalWrite(brightLED,LOW);                      // turn flash off
   if (!fb) {
     Serial.println("Camera capture failed");
-    flashLED(3);
+    flashLED(4);
   }
 
   // take a distance reading and add to file name
@@ -252,13 +284,13 @@ void storeImage(String iTitle) {
     File file = fs.open(SDfilename, FILE_WRITE);                              // create file on sd card
     if (!file) {
       Serial.println("Error: Failed to create file on sd-card: " + SDfilename);
-      flashLED(4);
+      flashLED(5);
     }
     else {
         if (file.write(fb->buf, fb->len)) Serial.println("Saved image to sd card");   // save image to file
         else {
           Serial.println("Error: failed to save image to sd card");
-          flashLED(4);
+          flashLED(5);
         }
         file.close();                // close image file on sd card
     }
