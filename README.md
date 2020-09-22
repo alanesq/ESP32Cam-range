@@ -11,11 +11,13 @@ the camera with the file name including the measured distance.
 This is curently a work in progress so is pretty basic at the moment but is now in a working state and ready to be mounted on my cycle for testing.
 If it proves to work as I hope the idea is that this will be a very low cost, easy to build way to collect some data on how close overtaking vehicles actually tend to get to cyclists.
 
-Cost to build:
-  ESP32Cam module 5ukp
-  Distance sensor 6ukp
-  SD Card under 10ukp
-  USB power bank 1ukp (Poundland)
+    Unit              Cost
+    ----              ----
+    ESP32Cam module   5ukp
+    Distance sensor   6ukp
+    SD Card under     10ukp
+    USB power bank    1ukp (Poundland)
+    
   
 Build details:
   The esp32cam module requires the code installing which if you are not experienced with Arduino IDE can be a challenge but apart from this
