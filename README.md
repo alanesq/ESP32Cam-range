@@ -31,6 +31,8 @@ Build details:
       Echo      12
       
   Insert a sd card, connect a USB power bank to the USB socket on the esp32cam module and it is ready to be installed in a case and used.
+  Note: There may be an issue with the esp32 being 3.3v logic and the sensor 5v, it seems to be working ok but you may prefer to
+        put a level shifter between the devices on pins 12 and 13.  Mine seems to be working ok directly connected so far.
  
 
 When the module boots it should give a quick flash on the white flash LED to show all is ok, there is a small red led on the rear of the
