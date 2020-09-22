@@ -37,6 +37,7 @@ When the module boots it should give a quick flash on the white flash LED to sho
 module which should flash every couple of seconds to show the sketch is running ok.
 
 The small led will also flash to show error states:
+
          1 = no sd card found
          2 = invalid format sd card found
          3 = failed to capture image from camera
