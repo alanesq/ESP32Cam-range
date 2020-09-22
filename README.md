@@ -30,7 +30,7 @@ Build details:
       Trigger   13
       Echo      12
       
-  Insert a sd card, connect a USB power bank to the USB socket on the esp32cam module and it is ready to be installed in a case and used.
+  Insert a sd card, connect a USB power bank to the 5v/GND on the esp32cam module and it is ready to be installed in a case and used.
   Note: There may be an issue with the esp32 being 3.3v logic and the sensor 5v, it seems to be working ok but you may prefer to
         put a level shifter between the devices on pins 12 and 13.  Mine seems to be working ok directly connected so far.
  
@@ -42,7 +42,9 @@ The small led will also flash to show error states:
 
          1 = no sd card found
          2 = invalid format sd card found
-         3 = failed to capture image from camera
-         4 = failed to store image to sd card
+         3 = failed to connect to camera
+         4 = failed to capture image from camera
+         5 = failed to store image to sd card
+         constant = waiting for object to clear
 
 
