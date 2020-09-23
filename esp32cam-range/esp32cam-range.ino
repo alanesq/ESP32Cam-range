@@ -21,6 +21,7 @@
  *        3 = failed to start camera
  *        4 = failed to capture image from camera
  *        5 = failed to store image to sd card
+ *        6 = failed to create log file
  *        constant = Waiting for captured object to clear
  *            
  *            
@@ -33,13 +34,16 @@
 
   const String stitle = "ESP32Cam-range";                // title of this sketch
 
-  const String sversion = "22Sep20";                     // Sketch version
+  const String sversion = "23Sep20";                     // Sketch version
   
-  int triggerDistance = 150;                             // distance below which will trigger an image capture in cm
+  int triggerDistance = 100;                             // distance below which will trigger an image capture in cm
+
+  int logFrequency = 1000;                               // how often to add distance to continual log file (milliseconds, 1000 = 1 second)
+  const int entriesPerLog = 180;                         // how many entries to store in each log file
 
   int numberReadings = 3;                                // number of readings to take from distance sensor to average together for final reading
 
-  int minTimeBetweenTriggers = 2;                        // minimum time between triggers in seconds
+  int minTimeBetweenTriggers = 5;                        // minimum time between triggers in seconds
 
   const int TimeBetweenStatus = 2;                       // time between status light flashes
 
@@ -62,9 +66,14 @@
   const int echoPin = 12;
 
 // Define general variables:
-  int imageCounter;                         // counter for file names on sdcard
+  int logsDist[entriesPerLog];              // log file temp store distance
+  uint32_t logsTime[entriesPerLog];         // log file temp store time recorded
+  int templogCounter = 0;                   // counter for temp log store
+  int imageCounter;                         // counter for image file names on sdcard
+  int logCounter;                           // counter for log file names on sdcard
   uint32_t lastTrigger = millis();          // last time camera was triggered
   uint32_t lastStatus = millis();           // last time status light flashed
+  uint32_t logTimer = millis();             // last time log file was updated
 
 // sd card - see https://randomnerdtutorials.com/esp32-cam-take-photo-save-microsd-card/
   #include "SD_MMC.h"
@@ -89,6 +98,9 @@ void setup() {
     Serial.println("Starting - " + stitle + " - " + sversion);
     Serial.println(("---------------------------------------"));
 
+  // Turn-off the 'brownout detector'
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   // Define io pins
     pinMode(trigPin, OUTPUT);
     pinMode(echoPin, INPUT);
@@ -97,32 +109,33 @@ void setup() {
     pinMode(brightLED, OUTPUT);
     digitalWrite(brightLED,LOW);
 
-    // set up camera
+  // set up camera
       Serial.print(("Initialising camera: "));
       if (setupCameraHardware()) Serial.println("OK");
       else {
         Serial.println("Error!");
-        flashLED(3); 
+        showError(3);       // critical error so stop and flash led
       }
 
-   // start sd card
+  // start sd card
       if (!SD_MMC.begin("/sdcard", true)) {         // if loading sd card fails     
         // note: ("/sdcard", true) = 1 wire - see: https://www.reddit.com/r/esp32/comments/d71es9/a_breakdown_of_my_experience_trying_to_talk_to_an/
         Serial.println("SD Card not found"); 
-        flashLED(1);  
-        while(1);   // stop
+        showError(1);       // critical error so stop and flash led
       }
       uint8_t cardType = SD_MMC.cardType();
       if (cardType == CARD_NONE) {                 // if no sd card found
           Serial.println("SD Card type detect failed"); 
-          flashLED(2);
-          while(1);  // stop
+          showError(2);       // critical error so stop and flash led
       } 
       uint16_t SDfreeSpace = (uint64_t)(SD_MMC.totalBytes() - SD_MMC.usedBytes()) / (1024 * 1024);
-      Serial.println("SD Card found, free space = " + String(SDfreeSpace) + "MB");   
+      Serial.println("SD Card found, free space = " + String(SDfreeSpace) + "MB");  
 
-  // discover number of files stored on sd card and set file counter accordingly
-    fs::FS &fs = SD_MMC; 
+  // create /log folder on sd card
+    fs::FS &fs = SD_MMC;    // sd card file system
+    fs.mkdir("/log");
+    
+  // discover number of image files stored on root of sd card and set image file counter accordingly
     File root = fs.open("/");
     while (true)
     {
@@ -132,10 +145,25 @@ void setup() {
       entry.close();
     }
     root.close();
-    Serial.println("File count = " + String(imageCounter));
+    Serial.println("Image file count = " + String(imageCounter));
 
-  // Turn-off the 'brownout detector'
-    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+ // discover number of log files stored in /log of sd card and set log file counter accordingly
+    root = fs.open("/log");
+    while (true)
+    {
+      File entry =  root.openNextFile();
+      if (! entry) break;
+      logCounter ++;    // increment image counter
+      entry.close();
+    }
+    root.close();
+    Serial.println("Log file count = " + String(logCounter));
+
+  // redefine io pins as sd card seems to upset them
+    pinMode(brightLED, OUTPUT);
+    pinMode(indicatorLED, OUTPUT);
+    pinMode(trigPin, OUTPUT);
+    pinMode(echoPin, INPUT);
 
   if (!psramFound()) Serial.println("Warning: No PSRam found");
 
@@ -160,10 +188,16 @@ void setup() {
 void loop() {
 
   // Read distance from sensor
-    int tdist = readDistance();    // read distance in cm
-    String textDist = "Unk";       // distance reading as a string
+    int tdist = readDistance(numberReadings);    // read distance in cm
+    String textDist = "Unk";                     // distance reading as a string
     if (tdist > 0) textDist = String(tdist) + "cm";
     Serial.println("Distance = " + textDist);
+
+  // add distance to continual logs
+  if ((unsigned long)(millis() - logTimer) >= logFrequency) { 
+    logTimer = millis();        // reset log timer
+    logDistance(tdist);         // add entry to logs
+  }
 
   // if distance is less than the trigger distance
   if (tdist < triggerDistance && tdist > 0) {
@@ -175,7 +209,7 @@ void loop() {
       }
     // wait for object to pass
       digitalWrite(indicatorLED,LOW);               // indicator led on
-      while (readDistance() < triggerDistance) {
+      while (readDistance(numberReadings) < triggerDistance) {
         delay(200);
       }
       digitalWrite(indicatorLED,HIGH);              // indicator led off
@@ -196,15 +230,15 @@ void loop() {
 
 // Read distance from ultrasound sensor - reads several times and take average
 //    returns result in centimeters
+//    noReps = number of distance readings to take average from
 
-int readDistance() {
+int readDistance(int noReps) {
 
-  int avrgDist = 0;                         // average of several readings
-  long duration =0;                         // duration of returning echo
+  long duration = 0;                        // duration of returning echo
   int distance = 0;                         // calculated distance in cm
-  int noZeros = 0;                          // number of zero results (i.e. no return signal received)
+  int noReadingCounter = 0;                 // number of failed attempts to read distance
 
-  for (int x=0; x < numberReadings; x++) {
+  for (int x=0; x < noReps; x++) {
   
     // Clear the trigPin by setting it LOW:
       digitalWrite(trigPin, LOW);
@@ -216,19 +250,13 @@ int readDistance() {
       digitalWrite(trigPin, LOW);
     
     duration = pulseIn(echoPin, HIGH, 25000);      // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
+
+    if (duration == 0) noReadingCounter++;         // increment failed attempt counter
+    else distance += duration*0.034/2;             // Calculate the distance in cm and add to running total
     
-    distance = duration*0.034/2;                   // Calculate the distance in cm
+  }   // for loop
 
-    avrgDist += distance;                          // add to running total
-
-    if (distance == 0) noZeros++;                  // increment zero result counter (so it can be ignored)
-  }
-
-  // calculate average reading
-  distance = 0;
-  if ((numberReadings - noZeros) > 0) {                      // avoid divide by zero
-    distance = avrgDist / ( numberReadings - noZeros);       // calculate average
-  }
+  if (distance > 0) distance = distance / ( noReps - noReadingCounter);      // calculate average, avoiding divide by zero if failed to get a reading
 
   return distance;
 }
@@ -240,14 +268,24 @@ int readDistance() {
 // Flash the status LED
 
 void flashLED(int reps) {
-  
-    for(int x=0; x < reps; x++) {
-      digitalWrite(indicatorLED,LOW);
-      delay(1000);
-      digitalWrite(indicatorLED,HIGH);
-      delay(500);
-    }
-    
+  for(int x=0; x < reps; x++) {
+    digitalWrite(indicatorLED,LOW);
+    delay(1000);
+    digitalWrite(indicatorLED,HIGH);
+    delay(500);
+  }
+}
+
+
+
+
+// critical error - stop and flash error status on led
+
+void showError(int errorNo) {
+  while(1) {
+    flashLED(errorNo);
+    delay(4000);
+  }
 }
 
 
@@ -262,7 +300,7 @@ void storeImage(String iTitle) {
 
   Serial.println("Storing image #" + String(imageCounter) + " to sd card");
 
-  fs::FS &fs = SD_MMC; 
+  fs::FS &fs = SD_MMC;           // sd card file system
 
   // capture live image from camera
   cameraImageSettings();                            // apply camera sensor settings
@@ -275,7 +313,7 @@ void storeImage(String iTitle) {
   }
 
   // take a distance reading and add to file name
-    int tdist = readDistance();    // distance in cm
+    int tdist = readDistance(numberReadings);       // distance in cm
     iTitle += "(" + String(tdist) + "cm)";
   
   // save image
@@ -296,6 +334,46 @@ void storeImage(String iTitle) {
     }
     esp_camera_fb_return(fb);        // return frame so memory can be released
 
+}
+
+
+// ******************************************************************************************************************
+
+
+// add distance to log file
+//    distToLog = the distance to add to the logs
+
+void logDistance(int distToLog) {
+
+  logsDist[templogCounter] = distToLog;        // add current distance entry to temp log
+  logsTime[templogCounter] = millis();         // add current time to temp log
+  templogCounter++;                            // increment temp log store counter
+  
+  if (templogCounter == entriesPerLog) {     
+    // store to temp log entries to sd card
+      Serial.println("Writing log to sd card");
+      fs::FS &fs = SD_MMC;                 // sd card file system
+      templogCounter = 0;                  // reset temp log counter     
+      logCounter++;                        // increment log file name number
+      String logFileName = "/log/log" + String(logCounter) + ".txt";
+      File logFile = fs.open(logFileName, FILE_WRITE);
+      if (logFile) {
+        // store entries in temp log in to new text file on sd card
+        for (int x=0; x < entriesPerLog; x++) {
+          logFile.print(String(logsDist[x]));
+          logFile.print(",");
+          logFile.println(String(logsTime[x]));
+        }
+        logFile.close();
+      } 
+      else {
+        // error creating new log file
+        Serial.println("Error creating log file: " + logFileName);
+        flashLED(6);
+      }
+  }
+
+  
 }
 
 
