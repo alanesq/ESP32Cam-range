@@ -22,7 +22,7 @@
  *        4 = failed to capture image from camera
  *        5 = failed to store image to sd card
  *        6 = failed to create log file
- *        constant = Waiting for captured object to clear
+ *        constant = Waiting for close object to clear
  *            
  *            
  *******************************************************************************************************************/
@@ -36,18 +36,22 @@
 
   const String sversion = "23Sep20";                     // Sketch version
   
-  int triggerDistance = 100;                             // distance below which will trigger an image capture in cm
+  bool camEnable = 0;                                    // Enable storing of images (1=enable)
+  int triggerDistance = 150;                             // distance below which will trigger an image capture in cm
 
-  int logFrequency = 1000;                               // how often to add distance to continual log file (milliseconds, 1000 = 1 second)
-  const int entriesPerLog = 180;                         // how many entries to store in each log file
+  bool logEnable = 1;                                    // Store constant log of distance readings (1=enable)
+  int logFrequency = 30;                                 // how often to add distance to continual log file (milliseconds, 1000 = 1 second)
+  const int entriesPerLog = 300;                         // how many entries to store in each log file
 
-  int numberReadings = 3;                                // number of readings to take from distance sensor to average together for final reading
+  int numberReadings = 1;                                // number of readings to take from distance sensor to average together for final reading
 
   int minTimeBetweenTriggers = 5;                        // minimum time between triggers in seconds
 
-  const int TimeBetweenStatus = 2;                       // time between status light flashes
+  const int TimeBetweenStatus = 400;                     // time between status light flashes (milliseconds)
 
   bool flashRequired = 1;                                // If flash to be used when capturing image (1 = yes)
+
+  const int echoTimeout = (5882 * 2);                    // timeout if no echo received from distance sensor (5882 ~ 1m)
 
   const int indicatorLED = 33;                           // onboard status LED pin (33)
 
@@ -131,9 +135,12 @@ void setup() {
       uint16_t SDfreeSpace = (uint64_t)(SD_MMC.totalBytes() - SD_MMC.usedBytes()) / (1024 * 1024);
       Serial.println("SD Card found, free space = " + String(SDfreeSpace) + "MB");  
 
-  // create /log folder on sd card
-    fs::FS &fs = SD_MMC;    // sd card file system
-    fs.mkdir("/log");
+  fs::FS &fs = SD_MMC;                    // sd card file system
+  
+  if (logEnable) {
+    int tq=fs.mkdir("/log");        // create the "/log" folder on sd card
+    if (!tq) Serial.println("Error creating LOG folder on sd card");
+  }
     
   // discover number of image files stored on root of sd card and set image file counter accordingly
     File root = fs.open("/");
@@ -148,16 +155,18 @@ void setup() {
     Serial.println("Image file count = " + String(imageCounter));
 
  // discover number of log files stored in /log of sd card and set log file counter accordingly
-    root = fs.open("/log");
-    while (true)
-    {
-      File entry =  root.openNextFile();
-      if (! entry) break;
-      logCounter ++;    // increment image counter
-      entry.close();
+    if (logEnable) {
+      root = fs.open("/log");
+      while (true)
+      {
+        File entry =  root.openNextFile();
+        if (! entry) break;
+        logCounter ++;    // increment image counter
+        entry.close();
+      }
+      root.close();
+      Serial.println("Log file count = " + String(logCounter));
     }
-    root.close();
-    Serial.println("Log file count = " + String(logCounter));
 
   // redefine io pins as sd card seems to upset them
     pinMode(brightLED, OUTPUT);
@@ -199,8 +208,8 @@ void loop() {
     logDistance(tdist);         // add entry to logs
   }
 
-  // if distance is less than the trigger distance
-  if (tdist < triggerDistance && tdist > 0) {
+  // if distance is less than the trigger distance and recording of images is enabled
+  if ( (tdist < triggerDistance && tdist > 0)  && camEnable) {
     // if long enough since last trigger store image
       if ((unsigned long)(millis() - lastTrigger) >= (minTimeBetweenTriggers * 1000)) { 
         lastTrigger = millis();                     // reset timer
@@ -216,12 +225,11 @@ void loop() {
   }
 
   // flash status light to show sketch is running
-    if ((unsigned long)(millis() - lastStatus) >= (TimeBetweenStatus * 1000)) { 
+    if ((unsigned long)(millis() - lastStatus) >= TimeBetweenStatus) { 
       lastStatus = millis();              // reset timer
-      digitalWrite(indicatorLED,LOW);     // led on
+      digitalWrite(indicatorLED,!digitalRead(indicatorLED));     // led status change
     }
-    delay(80);
-    digitalWrite(indicatorLED,HIGH);     // led off
+    
 }
 
 
@@ -249,10 +257,10 @@ int readDistance(int noReps) {
       delayMicroseconds(10);
       digitalWrite(trigPin, LOW);
     
-    duration = pulseIn(echoPin, HIGH, 25000);      // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
+    duration = pulseIn(echoPin, HIGH, echoTimeout);      // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
 
-    if (duration == 0) noReadingCounter++;         // increment failed attempt counter
-    else distance += duration*0.034/2;             // Calculate the distance in cm and add to running total
+    if (duration == 0) noReadingCounter++;               // increment failed attempt counter
+    else distance += duration*0.034/2;                   // Calculate the distance in cm and add to running total
     
   }   // for loop
 
@@ -297,6 +305,8 @@ void showError(int errorNo) {
 
 
 void storeImage(String iTitle) {
+    
+  if (!camEnable) return;                        // if logs disabled do nothing
 
   Serial.println("Storing image #" + String(imageCounter) + " to sd card");
 
@@ -345,13 +355,23 @@ void storeImage(String iTitle) {
 
 void logDistance(int distToLog) {
 
-  logsDist[templogCounter] = distToLog;        // add current distance entry to temp log
-  logsTime[templogCounter] = millis();         // add current time to temp log
-  templogCounter++;                            // increment temp log store counter
+  if (!logEnable) return;                        // if logs disabled do nothing
   
-  if (templogCounter == entriesPerLog) {     
-    // store to temp log entries to sd card
-      Serial.println("Writing log to sd card");
+    if (distToLog == 0) distToLog = 500;         // if no return signal was received set it to max distance
+
+    logsDist[templogCounter] = distToLog;        // add current distance entry to temp log
+    logsTime[templogCounter] = millis();         // add current time to temp log
+    templogCounter++;                            // increment temp log store counter
+        
+    if (templogCounter == entriesPerLog) {     
+      // store to temp log entries to sd card
+        Serial.println("Writing log to sd card");
+        
+// flash to show new log file created on sd card
+  digitalWrite(brightLED,HIGH);  // turn flash on
+  delay(30);
+  digitalWrite(brightLED,LOW);  // turn flash off
+        
       fs::FS &fs = SD_MMC;                 // sd card file system
       templogCounter = 0;                  // reset temp log counter     
       logCounter++;                        // increment log file name number
