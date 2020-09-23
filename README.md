@@ -33,6 +33,7 @@ Build details:
       Echo      12
       
   Insert a sd card, connect a USB power bank to the 5v/GND on the esp32cam module and it is ready to be installed in a case and used.
+  
   Note: There may be an issue with the esp32 being 3.3v logic and the sensor 5v, it seems to be working ok but you may prefer to
         put a level shifter between the devices on pins 12 and 13.  Mine seems to be working ok directly connected so far.
         Newer versions of the sensor (v2.0) claims to work at either voltage but I have seen several reports of problems when trying
@@ -49,6 +50,7 @@ The small led will also flash to show error states:
          3 = failed to connect to camera
          4 = failed to capture image from camera
          5 = failed to store image to sd card
+         6 = log file problem
          constant = waiting for object to clear
 
 
