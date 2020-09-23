@@ -36,22 +36,23 @@
 
   const String sversion = "23Sep20";                     // Sketch version
   
-  bool camEnable = 0;                                    // Enable storing of images (1=enable)
-  int triggerDistance = 150;                             // distance below which will trigger an image capture in cm
+  const bool camEnable = 1;                              // Enable storing of images (1=enable)
+  const int triggerDistance = 150;                       // distance below which will trigger an image capture in cm
 
-  bool logEnable = 1;                                    // Store constant log of distance readings (1=enable)
-  int logFrequency = 30;                                 // how often to add distance to continual log file (milliseconds, 1000 = 1 second)
-  const int entriesPerLog = 300;                         // how many entries to store in each log file
+  const bool logEnable = 1;                              // Store constant log of distance readings (1=enable)
+  const bool flashOnLog = 1;                             // if to flash the main LED when log is written to sd card
+  const int logFrequency = 35;                           // how often to add distance to continual log file (milliseconds, 1000 = 1 second)
+  const int entriesPerLog = 250;                         // how many entries to store in each log file
 
-  int numberReadings = 1;                                // number of readings to take from distance sensor to average together for final reading
+  const int numberReadings = 1;                          // number of readings to take from distance sensor to average together for final reading
 
-  int minTimeBetweenTriggers = 5;                        // minimum time between triggers in seconds
+  const int minTimeBetweenTriggers = 5;                  // minimum time between triggers in seconds
 
   const int TimeBetweenStatus = 400;                     // time between status light flashes (milliseconds)
 
-  bool flashRequired = 1;                                // If flash to be used when capturing image (1 = yes)
+  const bool flashRequired = 1;                          // If flash to be used when capturing image (1 = yes)
 
-  const int echoTimeout = (5882 * 2);                    // timeout if no echo received from distance sensor (5882 ~ 1m)
+  const int echoTimeout = (5882 * 5.5);                  // timeout if no echo received from distance sensor (5882 ~ 1m)
 
   const int indicatorLED = 33;                           // onboard status LED pin (33)
 
@@ -357,7 +358,7 @@ void logDistance(int distToLog) {
 
   if (!logEnable) return;                        // if logs disabled do nothing
   
-    if (distToLog == 0) distToLog = 500;         // if no return signal was received set it to max distance
+    if (distToLog == 0) distToLog = 600;         // if no return signal was received set it to max distance
 
     logsDist[templogCounter] = distToLog;        // add current distance entry to temp log
     logsTime[templogCounter] = millis();         // add current time to temp log
@@ -367,10 +368,12 @@ void logDistance(int distToLog) {
       // store to temp log entries to sd card
         Serial.println("Writing log to sd card");
         
-// flash to show new log file created on sd card
-  digitalWrite(brightLED,HIGH);  // turn flash on
-  delay(30);
-  digitalWrite(brightLED,LOW);  // turn flash off
+    // flash to show new log file created on sd card
+    if (flashOnLog) {
+        digitalWrite(brightLED,HIGH);  // turn flash on
+        delay(20);
+        digitalWrite(brightLED,LOW);  // turn flash off
+    }
         
       fs::FS &fs = SD_MMC;                 // sd card file system
       templogCounter = 0;                  // reset temp log counter     
