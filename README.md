@@ -13,12 +13,13 @@ recorded(in milliseconds)
 This is curently a work in progress so is pretty basic at the moment but is now in a working state and ready to be mounted on my cycle for testing.
 If it proves to work as I hope the idea is that this will be a very low cost, easy to build way to collect some data on how close overtaking vehicles actually tend to get to cyclists.
 
-    Unit              Cost
-    ----              ----
-    ESP32Cam module   5ukp
-    Distance sensor   6ukp
-    SD Card under     10ukp
-    USB power bank    1ukp (Poundland)
+    Unit                    Cost
+    ----                    ----
+    ESP32Cam module         5ukp
+    In circuit programmer   2ukp    As the esp32 does not have it built in
+    Distance sensor         6ukp
+    SD Card under           10ukp
+    USB power bank          1ukp    From Poundland
     
   
 Build details:
