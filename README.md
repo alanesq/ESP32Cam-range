@@ -15,6 +15,8 @@ Note: if you have image recording enabled it takes around 3/4 second to capture 
 
 See the "settings" section at the top of the code to enable/disable/configure features.
 
+Even if you do not plan to use the camera I think the esp32cam module is a good choice as it is cheap and has the sd card reader built in, you do 
+need to have an in circuit programmer though as it does not have a usb socket onboard.
 Lots of info on the esp32cam board here: https://randomnerdtutorials.com/esp32-cam-video-streaming-face-recognition-arduino-ide/
 
 If it proves to work as I hope the idea is that this will be a very low cost, easy to build way to collect some data on how close overtaking vehicles actually tend to get to cyclists.
@@ -29,7 +31,7 @@ If it proves to work as I hope the idea is that this will be a very low cost, ea
     It also requires an sd card to store the data on and a case of some kind.
   
 Build details:
-  The esp32cam module requires the code installing which if you are not experienced with Arduino IDE can be a challenge but apart from this
+  The esp32cam module requires the code installing which if you are not experienced with Arduino IDE can be a bit of a challenge but apart from this
   it is a very simple build.  The esp32cam comes with an sd card reader built in so all it requies is 4 wires connecting it to the ultrasound sensor.
   
       Sensor    ESP32Cam
@@ -39,25 +41,29 @@ Build details:
       Trigger   13
       Echo      12
       
-  Insert a sd card, connect a USB power bank to the 5v/GND on the esp32cam module and it is ready to be installed in a case and used.
+  Insert a formatted sd card, connect a USB power bank to the 5v/GND on the esp32cam module and it is ready to be installed in a case and used.
   
-  Note: There may be an issue with the esp32 being 3.3v logic and the sensor 5v, it seems to be working ok but you may prefer to
-        put a level shifter (or resistor) between the devices on pins 12 and 13.  Mine seems to be working ok directly connected so far.
-        Newer versions of the sensor (v2.0) claims to work at either voltage but I have seen several reports of problems when trying
-        to use them at 3.3v.
- 
-
 When the module boots it should give a quick flash on the white flash LED to show all is ok, there is a small red led on the rear of the
-module which should flash every couple of seconds to show the sketch is running ok or show error.
+module which should flash continually to show the sketch is running ok or show errors.
 
-The small led will also flash to show error states:
+        Flashes     Meaning
+        -------     -------
+         1          no sd card found
+         2          invalid format sd card found
+         3          failed to connect to camera
+         4          failed to capture image from camera
+         5          failed to store image to sd card
+         6          log file problem
+         constant   waiting for object to clear distance sensor
 
-         1 = no sd card found
-         2 = invalid format sd card found
-         3 = failed to connect to camera
-         4 = failed to capture image from camera
-         5 = failed to store image to sd card
-         6 = log file problem
-         constant = waiting for object to clear distance sensor
 
+Notes
+-----
+
+The fastest it is able to capture a stream of data is around 85 readings a second (12ms)
+
+There may be an issue with the esp32 being 3.3v logic and the sensor 5v, it seems to be working ok for me so far but you may prefer to
+    put a level shifter (or resistor) between the devices on pins 12 and 13.
+    Newer versions of the sensor (v2.0) claims to work at either voltage but I have seen several reports of problems when trying
+    to use them at 3.3v.
 
