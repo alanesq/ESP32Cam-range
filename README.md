@@ -48,12 +48,12 @@ module which should flash continually to show the sketch is running ok or show e
 
         Flashes     Meaning
         -------     -------
-         1          no sd card found
-         2          invalid format sd card found
-         3          failed to connect to camera
-         4          failed to capture image from camera
-         5          failed to store image to sd card
-         6          log file problem
+         2          no sd card found
+         3          invalid format sd card found
+         4          failed to connect to camera
+         5          failed to capture image from camera
+         6          failed to store image to sd card
+         7          log file problem
          constant   waiting for object to clear distance sensor
 
 
