@@ -70,7 +70,6 @@ There may be an issue with the esp32 being 3.3v logic and the sensor 5v, it seem
 The minimum distance the sensor will read is around 20cm
 
 Using the esp32cam module means that there are no free io pins so if you wish to add lcd display, more inputs etc. then you will
-    need to look at a different development board.  or it may be possible to wire directly to the esp chips pins but this would 
-    not be easy.
-    
+    need to look at a different development board.  Or it may be possible to wire directly to the esp32-s module its self
+    Possible io pins to consider:    16, 17, 9, 10, 11, 6, 7, 8    
 
