@@ -15,6 +15,8 @@ Note: if you have image recording enabled it takes around 3/4 second to capture 
 
 See the "settings" section at the top of the code to enable/disable/configure features.
 
+Lots of info on the esp32cam board here: https://randomnerdtutorials.com/esp32-cam-video-streaming-face-recognition-arduino-ide/
+
 If it proves to work as I hope the idea is that this will be a very low cost, easy to build way to collect some data on how close overtaking vehicles actually tend to get to cyclists.
 
     Unit                    Cost
