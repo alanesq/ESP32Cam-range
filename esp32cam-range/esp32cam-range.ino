@@ -18,13 +18,13 @@
  *           it without myself...
  *     
  *     
- *     Status led flashes:
- *        1 = no sd card found
- *        2 = invalid format sd card found
- *        3 = failed to start camera
- *        4 = failed to capture image from camera
- *        5 = failed to store image to sd card
- *        6 = failed to create log file
+ *     Status led error flashes:
+ *        2 = no sd card found
+ *        3 = invalid format sd card found
+ *        4 = failed to start camera
+ *        5 = failed to capture image from camera
+ *        6 = failed to store image to sd card
+ *        7 = failed to create log file
  *        constant = Waiting for close object to clear
  * 
  * 
@@ -33,6 +33,9 @@
  *            
  * 
  *******************************************************************************************************************/
+
+
+#include "esp_camera.h"       // https://github.com/espressif/esp32-camera
 
 
 // ---------------------------------------------------------------
@@ -45,23 +48,23 @@
 
   const bool debugInfo = 0;                              // show additional debug info. on serial port (1=enabled)
   
-  const bool camEnable = 1;                              // Enable storing of images (1=enable)
-  const int triggerDistance = 150;                       // distance below which will trigger an image capture in cm
-
+  const bool camEnable = 0;                              // Enable storing of images (1=enable)
+  const int triggerDistance = 150;                       // distance below which will trigger an image capture (in cm)
+  const bool flashRequired = 1;                          // If flash to be used when capturing image (1 = yes)
+  const int minTimeBetweenTriggers = 5;                  // minimum time between camera triggers in seconds
+  const framesize_t FRAME_SIZE_IMAGE = FRAMESIZE_XGA;    // Image resolution:   160x120 (QQVGA), 128x160 (QQVGA2), 176x144 (QCIF), 240x176 (HQVGA), 
+                                                         //                     320x240 (QVGA), 400x296 (CIF), 640x480 (VGA, default), 800x600 (SVGA), 
+                                                         //                     1024x768 (XGA), 1280x1024 (SXGA), 1600x1200 (UXGA)
+                                                                                            
   const bool logEnable = 1;                              // Store constant log of distance readings (1=enable)
   const bool flashOnLog = 1;                             // if to flash the main LED when log is written to sd card
-  const int logFrequency = 40;                           // how often to add distance to continual log file (1000 = 1 second)
+  const int logFrequency = 10;                           // how often to add distance to continual log file (1000 = 1 second, fastest possible is 12)
   const int entriesPerLog = 500;                         // how many entries to store in each log file
 
-  const int numberReadings = 1;                          // number of readings to take from distance sensor to average together for final reading
-
-  const int minTimeBetweenTriggers = 5;                  // minimum time between camera triggers in seconds
-
-  const int TimeBetweenStatus = 400;                     // speed of flashing code running status light (milliseconds)
-
-  const bool flashRequired = 1;                          // If flash to be used when capturing image (1 = yes)
-
+  const int numberReadings = 1;                          // number of readings to take from distance sensor to average together for final result
   const int echoTimeout = (5882 * 4.5);                  // timeout if no echo received from distance sensor (5882 ~ 1m, max = 4.5m)
+
+  const int TimeBetweenStatus = 600;                     // speed of flashing system running ok status light (milliseconds)
 
   const int indicatorLED = 33;                           // onboard status LED pin (33)
 
@@ -71,26 +74,26 @@
 // ---------------------------------------------------------------
 
 
-
 #include "camera.h"                         // insert camera related code 
 
 #include "soc/soc.h"                        // Used to disable brownout problems
 #include "soc/rtc_cntl_reg.h"      
   
 // Define ultrasonic range sensor pins (jsn-sr04t)     13/12
+//    Note: Pin 13 is the only fully available io pin when using an sd card (must be in 1 wire mode), 12 can be used but must be low at boot
   const int trigPin = 13;
   const int echoPin = 12;
 
-// Define general variables:
+// Define variables:
   bool camTriggered = 0;                    // flag if camera has been triggered
-  int logsDist[entriesPerLog];              // log file temp store distance
-  uint32_t logsTime[entriesPerLog];         // log file temp store time recorded
-  int templogCounter = 0;                   // counter for temp log store
+  int logsDist[entriesPerLog];              // log file temp store of distance readings
+  uint32_t logsTime[entriesPerLog];         // log file temp store of time readings (millis)
+  int templogCounter = 0;                   // counter for temp log store (when limit reached data is written to sd card)
   int imageCounter;                         // counter for image file names on sdcard
   int logCounter;                           // counter for log file names on sdcard
   uint32_t lastTrigger = millis();          // last time camera was triggered
-  uint32_t lastStatus = millis();           // last time status light flashed
-  uint32_t logTimer = millis();             // last time log file was updated
+  uint32_t lastStatus = millis();           // last time status light changed status (to flash all ok led)
+  uint32_t logTimer = millis();             // last time log entry was stored
 
 // sd card - see https://randomnerdtutorials.com/esp32-cam-take-photo-save-microsd-card/
   #include "SD_MMC.h"
@@ -131,19 +134,19 @@ void setup() {
       if (setupCameraHardware()) Serial.println("OK");
       else {
         Serial.println("Error!");
-        showError(3);       // critical error so stop and flash led
+        showError(4);       // critical error so stop and flash led
       }
 
   // start sd card
       if (!SD_MMC.begin("/sdcard", true)) {         // if loading sd card fails     
         // note: ("/sdcard", true) = 1 wire - see: https://www.reddit.com/r/esp32/comments/d71es9/a_breakdown_of_my_experience_trying_to_talk_to_an/
         Serial.println("SD Card not found"); 
-        showError(1);       // critical error so stop and flash led
+        showError(2);       // critical error so stop and flash led
       }
       uint8_t cardType = SD_MMC.cardType();
       if (cardType == CARD_NONE) {                 // if no sd card found
           Serial.println("SD Card type detect failed"); 
-          showError(2);       // critical error so stop and flash led
+          showError(3);       // critical error so stop and flash led
       } 
       uint16_t SDfreeSpace = (uint64_t)(SD_MMC.totalBytes() - SD_MMC.usedBytes()) / (1024 * 1024);
       Serial.println("SD Card found, free space = " + String(SDfreeSpace) + "MB");  
@@ -181,7 +184,7 @@ void setup() {
       Serial.println("Log file count = " + String(logCounter));
     }
 
-  // redefine io pins as sd card seems to upset them
+  // redefine io pins as sd card seems to upset some of them
     pinMode(brightLED, OUTPUT);
     pinMode(indicatorLED, OUTPUT);
     pinMode(trigPin, OUTPUT);
@@ -325,13 +328,13 @@ void storeImage(String iTitle) {
   fs::FS &fs = SD_MMC;           // sd card file system
 
   // capture live image from camera
-  cameraImageSettings();                            // apply camera sensor settings
+    // cameraImageSettings();                            // apply camera sensor settings (in camera.h)
   if (flashRequired) digitalWrite(brightLED,HIGH);  // turn flash on
   camera_fb_t *fb = esp_camera_fb_get();            // capture frame from camera
   digitalWrite(brightLED,LOW);                      // turn flash off
   if (!fb) {
     Serial.println("Camera capture failed");
-    flashLED(4);
+    flashLED(5);
   }
 
   // take a distance reading and add to file name
@@ -344,7 +347,7 @@ void storeImage(String iTitle) {
     File file = fs.open(SDfilename, FILE_WRITE);                              // create file on sd card
     if (!file) {
       Serial.println("Error: Failed to create file on sd-card: " + SDfilename);
-      flashLED(5);
+      flashLED(6);
     }
     else {
         if (file.write(fb->buf, fb->len)) Serial.println("Saved image to sd card");   // save image to file
@@ -405,7 +408,7 @@ void logDistance(int distToLog) {
       else {
         // error creating new log file
         Serial.println("Error creating log file: " + logFileName);
-        flashLED(6);
+        flashLED(7);
       }
   }
 

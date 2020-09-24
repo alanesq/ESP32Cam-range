@@ -1,6 +1,6 @@
 /**************************************************************************************************
  *  
- *  ESP32 camera - Sep20
+ *  ESP32 camera - 24Sep20
  * 
  *  
  *  For info on the camera module see: https://github.com/espressif/esp32-camera
@@ -11,7 +11,7 @@
 
 #define DEBUG_MOTION 0        // extended serial debug enable for motion.h
 
-#include "esp_camera.h"       // https://github.com/espressif/esp32-camera
+// #include "esp_camera.h"       // https://github.com/espressif/esp32-camera
 
 
 // camera type settings (CAMERA_MODEL_AI_THINKER)
@@ -75,14 +75,15 @@ bool setupCameraHardware() {
     config.pin_reset = RESET_GPIO_NUM;
     config.xclk_freq_hz = 20000000;               // XCLK 20MHz or 10MHz for OV2640 double FPS (Experimental)
     config.pixel_format = PIXFORMAT_JPEG;         // PIXFORMAT_ + YUV422, GRAYSCALE, RGB565, JPEG, RGB888?
-    config.frame_size = FRAMESIZE_XGA;            // FRAMESIZE_ + QVGA, CIF, VGA, SVGA, XGA, SXGA, UXGA 
-    config.jpeg_quality = 10;                     // 0-63 lower number means higher quality
+    config.frame_size = FRAME_SIZE_IMAGE;         // Image sizes: 160x120 (QQVGA), 128x160 (QQVGA2), 176x144 (QCIF), 240x176 (HQVGA), 320x240 (QVGA), 
+                                                  //              400x296 (CIF), 640x480 (VGA, default), 800x600 (SVGA), 1024x768 (XGA), 1280x1024 (SXGA), 1600x1200 (UXGA)
+    config.jpeg_quality = 5;                      // 0-63 lower number means higher quality
     config.fb_count = 1;                          // if more than one, i2s runs in continuous mode. Use only with JPEG
     
     esp_err_t camerr = esp_camera_init(&config);  // initialise the camera
     if (camerr != ESP_OK) Serial.printf("ERROR: Camera init failed with error 0x%x", camerr);
 
-    cameraImageSettings();                 // apply camera sensor settings
+    // cameraImageSettings();                 // apply camera sensor settings
     
     return (camerr == ESP_OK);             // return boolean result of camera initilisation
 }
@@ -94,6 +95,8 @@ bool setupCameraHardware() {
  * apply camera sensor/image settings
  */
 
+// Note: to implement this uncomment "cameraImageSettings()" in main sketch
+
 bool cameraImageSettings() { 
    
     sensor_t *s = esp_camera_sensor_get();  
@@ -103,21 +106,19 @@ bool cameraImageSettings() {
       return 0;
     } 
 
-    #if IMAGE_SETTINGS           // Implement adjustment of image settings 
-
       // If you enable gain_ctrl or exposure_ctrl it will prevent a lot of the other settings having any effect
       // more info on settings here: https://randomnerdtutorials.com/esp32-cam-ov2640-camera-settings/
       s->set_gain_ctrl(s, 0);                       // auto gain off (1 or 0)
       s->set_exposure_ctrl(s, 0);                   // auto exposure off (1 or 0)
-      s->set_agc_gain(s, cameraImageGain);          // set gain manually (0 - 30)
-      s->set_aec_value(s, cameraImageExposure);     // set exposure manually  (0-1200)
-      s->set_vflip(s, cameraImageInvert);           // Invert image (0 or 1)     
+      s->set_agc_gain(s, 0);                        // set gain manually (0 - 30)
+      s->set_aec_value(s, 30);                      // set exposure manually  (0-1200)
+      s->set_vflip(s, 0);                           // Invert image (0 or 1)     
       s->set_quality(s, 10);                        // (0 - 63)
       s->set_gainceiling(s, GAINCEILING_32X);       // Image gain (GAINCEILING_x2, x4, x8, x16, x32, x64 or x128) 
-      s->set_brightness(s, cameraImageBrightness);  // (-2 to 2) - set brightness
+      s->set_brightness(s, 0);                      // (-2 to 2) - set brightness - has no effect?
       s->set_lenc(s, 1);                            // lens correction? (1 or 0)
       s->set_saturation(s, 0);                      // (-2 to 2)
-      s->set_contrast(s, cameraImageContrast);      // (-2 to 2)
+      s->set_contrast(s, 0);                        // (-2 to 2) - set contrast - has no effect?
       s->set_sharpness(s, 0);                       // (-2 to 2)  
       s->set_hmirror(s, 0);                         // (0 or 1) flip horizontally
       s->set_colorbar(s, 0);                        // (0 or 1) - show a testcard
@@ -131,7 +132,6 @@ bool cameraImageSettings() {
 //       s->set_ae_level(s, 0);                        // auto exposure levels (-2 to 2)
       s->set_bpc(s, 0);                             // black pixel correction
       s->set_wpc(s, 0);                             // white pixel correction
-    #endif
 
     // capture a frame to ensure settings apply (not sure if this is really needed)
       camera_fb_t *frame_buffer = esp_camera_fb_get();    // capture frame from camera
