@@ -1,8 +1,9 @@
  /*******************************************************************************************************************
  *            
- *     Cycling close pass distance recorder using 
- *     an ESP32Cam module along with a JSN-SR04T ultrasonic distance sensor 
+ *     Cycling close pass distance recorder using ESP32Cam module along with a JSN-SR04T ultrasonic distance sensor 
+ *                                 Github: https://github.com/alanesq/ESP32Cam-range
  *     
+ * 
  *     
  *     - created using the Arduino IDE with ESP32 module installed   (https://dl.espressif.com/dl/package_esp32_index.json)
  *       No additional libraries required
@@ -13,6 +14,8 @@
  *          GND to GND
  *          13 to Trigger (Rx)
  *          12 to Echo (Tx)
+ *     Note: Ideally there should be a voltage converter on pins 12 and 13 or at least a resistor although I have been using 
+ *           it without myself...
  *     
  *     
  *     Status led flashes:
@@ -23,8 +26,12 @@
  *        5 = failed to store image to sd card
  *        6 = failed to create log file
  *        constant = Waiting for close object to clear
+ * 
+ * 
+ *     Info on the esp32cam board:  https://randomnerdtutorials.com/esp32-cam-video-streaming-face-recognition-arduino-ide/
  *            
  *            
+ * 
  *******************************************************************************************************************/
 
 
@@ -38,23 +45,23 @@
 
   const bool debugInfo = 0;                              // show additional debug info. on serial port (1=enabled)
   
-  const bool camEnable = 0;                              // Enable storing of images (1=enable)
+  const bool camEnable = 1;                              // Enable storing of images (1=enable)
   const int triggerDistance = 150;                       // distance below which will trigger an image capture in cm
 
   const bool logEnable = 1;                              // Store constant log of distance readings (1=enable)
   const bool flashOnLog = 1;                             // if to flash the main LED when log is written to sd card
-  const int logFrequency = 20;                           // how often to add distance to continual log file (milliseconds, 1000 = 1 second)
+  const int logFrequency = 40;                           // how often to add distance to continual log file (1000 = 1 second)
   const int entriesPerLog = 500;                         // how many entries to store in each log file
 
   const int numberReadings = 1;                          // number of readings to take from distance sensor to average together for final reading
 
-  const int minTimeBetweenTriggers = 5;                  // minimum time between triggers in seconds
+  const int minTimeBetweenTriggers = 5;                  // minimum time between camera triggers in seconds
 
-  const int TimeBetweenStatus = 400;                     // time between status light flashes (milliseconds)
+  const int TimeBetweenStatus = 400;                     // speed of flashing code running status light (milliseconds)
 
   const bool flashRequired = 1;                          // If flash to be used when capturing image (1 = yes)
 
-  const int echoTimeout = (5882 * 4.5);                  // timeout if no echo received from distance sensor (5882 ~ 1m)
+  const int echoTimeout = (5882 * 4.5);                  // timeout if no echo received from distance sensor (5882 ~ 1m, max = 4.5m)
 
   const int indicatorLED = 33;                           // onboard status LED pin (33)
 
@@ -62,6 +69,8 @@
 
   
 // ---------------------------------------------------------------
+
+
 
 #include "camera.h"                         // insert camera related code 
 
