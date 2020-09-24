@@ -57,8 +57,8 @@ module which should flash continually to show the sketch is running ok or show e
          constant   waiting for object to clear distance sensor
 
 
-Notes
------
+Misc Notes
+----------
 
 The fastest it is able to capture a stream of data is around 85 readings a second (12ms)
 
@@ -66,4 +66,11 @@ There may be an issue with the esp32 being 3.3v logic and the sensor 5v, it seem
     put a level shifter (or resistor) between the devices on pins 12 and 13.
     Newer versions of the sensor (v2.0) claims to work at either voltage but I have seen several reports of problems when trying
     to use them at 3.3v.
+    
+The minimum distance the sensor will read is around 20cm
+
+Using the esp32cam module means that there are no free io pins so if you wish to add lcd display, more inputs etc. then you will
+    need to look at a different development board.  or it may be possible to wire directly to the esp chips pins but this would 
+    not be easy.
+    
 
