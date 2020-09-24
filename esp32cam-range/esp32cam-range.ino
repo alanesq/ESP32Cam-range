@@ -11,8 +11,8 @@
  *     Four wires connect the esp32 to the ultrasonic sensor:
  *          5v to 5v
  *          GND to GND
- *          13 to Trigger
- *          12 to Echo
+ *          13 to Trigger (Rx)
+ *          12 to Echo (Tx)
  *     
  *     
  *     Status led flashes:
@@ -34,15 +34,17 @@
 
   const String stitle = "ESP32Cam-range";                // title of this sketch
 
-  const String sversion = "23Sep20";                     // Sketch version
+  const String sversion = "24Sep20";                     // Sketch version
+
+  const bool debugInfo = 0;                              // show additional debug info. on serial port (1=enabled)
   
-  const bool camEnable = 1;                              // Enable storing of images (1=enable)
+  const bool camEnable = 0;                              // Enable storing of images (1=enable)
   const int triggerDistance = 150;                       // distance below which will trigger an image capture in cm
 
   const bool logEnable = 1;                              // Store constant log of distance readings (1=enable)
   const bool flashOnLog = 1;                             // if to flash the main LED when log is written to sd card
-  const int logFrequency = 35;                           // how often to add distance to continual log file (milliseconds, 1000 = 1 second)
-  const int entriesPerLog = 250;                         // how many entries to store in each log file
+  const int logFrequency = 20;                           // how often to add distance to continual log file (milliseconds, 1000 = 1 second)
+  const int entriesPerLog = 500;                         // how many entries to store in each log file
 
   const int numberReadings = 1;                          // number of readings to take from distance sensor to average together for final reading
 
@@ -52,7 +54,7 @@
 
   const bool flashRequired = 1;                          // If flash to be used when capturing image (1 = yes)
 
-  const int echoTimeout = (5882 * 5.5);                  // timeout if no echo received from distance sensor (5882 ~ 1m)
+  const int echoTimeout = (5882 * 4.5);                  // timeout if no echo received from distance sensor (5882 ~ 1m)
 
   const int indicatorLED = 33;                           // onboard status LED pin (33)
 
@@ -71,6 +73,7 @@
   const int echoPin = 12;
 
 // Define general variables:
+  bool camTriggered = 0;                    // flag if camera has been triggered
   int logsDist[entriesPerLog];              // log file temp store distance
   uint32_t logsTime[entriesPerLog];         // log file temp store time recorded
   int templogCounter = 0;                   // counter for temp log store
@@ -197,38 +200,36 @@ void setup() {
 
 void loop() {
 
-  // Read distance from sensor
-    int tdist = readDistance(numberReadings);    // read distance in cm
-    String textDist = "Unk";                     // distance reading as a string
-    if (tdist > 0) textDist = String(tdist) + "cm";
-    Serial.println("Distance = " + textDist);
+  // Read distance from ultrasonic sensor
+    int tDist = readDistance(numberReadings);                              // read distance in cm
+    String textDist = "Unk";                                               // distance reading as a string
+    if (tDist > 0) textDist = String(tDist) + "cm";
+    if (debugInfo) Serial.println("Distance = " + textDist);
 
-  // add distance to continual logs
-  if ((unsigned long)(millis() - logTimer) >= logFrequency) { 
-    logTimer = millis();        // reset log timer
-    logDistance(tdist);         // add entry to logs
-  }
+  // if distance greater than trigger distance clear the triggered flag to re-enable triggering
+    if (tDist > triggerDistance) {
+      if (camTriggered == 1) digitalWrite(indicatorLED,HIGH);              // indicator led off when flag is cleared
+      camTriggered = 0;
+      if (debugInfo) Serial.println("Object clear");
+    }
 
   // if distance is less than the trigger distance and recording of images is enabled
-  if ( (tdist < triggerDistance && tdist > 0)  && camEnable) {
-    // if long enough since last trigger store image
-      if ((unsigned long)(millis() - lastTrigger) >= (minTimeBetweenTriggers * 1000)) { 
-        lastTrigger = millis();                     // reset timer
-        digitalWrite(indicatorLED,LOW);             // indicator led on
-        storeImage(textDist);                       // capture and store a live image
-      }
-    // wait for object to pass
-      digitalWrite(indicatorLED,LOW);               // indicator led on
-      while (readDistance(numberReadings) < triggerDistance) {
-        delay(200);
-      }
-      digitalWrite(indicatorLED,HIGH);              // indicator led off
-  }
+    if ( camEnable == 1 && tDist < triggerDistance && tDist > 0) {
+      // if long enough since last trigger and not already triggered store image
+        if ( camTriggered == 0 && ((unsigned long)(millis() - lastTrigger) >= (minTimeBetweenTriggers * 1000)) ) {
+          storeImage(textDist); 
+          digitalWrite(indicatorLED,LOW);                                  // indicator led on
+          camTriggered = 1;                                                // flag that camera has been triggered (will not re trigger until this has been cleared)
+        }
+    }
 
+  // add distance to continual logs if logs are enabled and suficient time since last entry
+    if (logEnable == 1 && ((unsigned long)(millis() - logTimer) >= logFrequency)) logDistance(tDist);
+    
   // flash status light to show sketch is running
     if ((unsigned long)(millis() - lastStatus) >= TimeBetweenStatus) { 
-      lastStatus = millis();              // reset timer
-      digitalWrite(indicatorLED,!digitalRead(indicatorLED));     // led status change
+      lastStatus = millis();                                               // reset timer
+      digitalWrite(indicatorLED,!digitalRead(indicatorLED));               // indicator led status change
     }
     
 }
@@ -258,10 +259,10 @@ int readDistance(int noReps) {
       delayMicroseconds(10);
       digitalWrite(trigPin, LOW);
     
-    duration = pulseIn(echoPin, HIGH, echoTimeout);      // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
+    duration = pulseIn(echoPin, HIGH, echoTimeout);      // Read the echoPin. pulseIn() returns the duration (length of the pulse in millionths of a second) in microseconds:
 
     if (duration == 0) noReadingCounter++;               // increment failed attempt counter
-    else distance += duration*0.034/2;                   // Calculate the distance in cm and add to running total
+    else distance += duration*0.034/2;                   // Calculate the distance in cm and add to running total  (speed of sound = 340m/s)
     
   }   // for loop
 
@@ -287,7 +288,6 @@ void flashLED(int reps) {
 
 
 
-
 // critical error - stop and flash error status on led
 
 void showError(int errorNo) {
@@ -307,9 +307,11 @@ void showError(int errorNo) {
 
 void storeImage(String iTitle) {
     
-  if (!camEnable) return;                        // if logs disabled do nothing
+  // if (!camEnable) return;                        // if logs disabled do nothing
 
-  Serial.println("Storing image #" + String(imageCounter) + " to sd card");
+  lastTrigger = millis();                           // reset timer
+
+  if (debugInfo) Serial.println("Storing image #" + String(imageCounter) + " to sd card");
 
   fs::FS &fs = SD_MMC;           // sd card file system
 
@@ -356,9 +358,11 @@ void storeImage(String iTitle) {
 
 void logDistance(int distToLog) {
 
-  if (!logEnable) return;                        // if logs disabled do nothing
+    // if (!logEnable) return;                       // if logs disabled do nothing
+ 
+    logTimer = millis();                         // reset timer
   
-    if (distToLog == 0) distToLog = 600;         // if no return signal was received set it to max distance
+    if (distToLog == 0) distToLog = 500;         // if no return signal was received set it to max distance
 
     logsDist[templogCounter] = distToLog;        // add current distance entry to temp log
     logsTime[templogCounter] = millis();         // add current time to temp log
@@ -366,7 +370,7 @@ void logDistance(int distToLog) {
         
     if (templogCounter == entriesPerLog) {     
       // store to temp log entries to sd card
-        Serial.println("Writing log to sd card");
+        if (debugInfo) Serial.println("Writing log to sd card");
         
     // flash to show new log file created on sd card
     if (flashOnLog) {
