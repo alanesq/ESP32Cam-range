@@ -44,7 +44,7 @@
 
   const String stitle = "ESP32Cam-range";                // title of this sketch
 
-  const String sversion = "24Sep20";                     // Sketch version
+  const String sversion = "25Sep20";                     // Sketch version
 
   const bool debugInfo = 0;                              // show additional debug info. on serial port (1=enabled)
   
@@ -58,11 +58,11 @@
                                                                                             
   const bool logEnable = 1;                              // Store constant log of distance readings (1=enable)
   const bool flashOnLog = 1;                             // if to flash the main LED when log is written to sd card
-  const int logFrequency = 10;                           // how often to add distance to continual log file (1000 = 1 second, fastest possible is 12)
-  const int entriesPerLog = 500;                         // how many entries to store in each log file
+  const int logFrequency = 0;                            // how often to add distance to continual log file (1000 = 1 second), set to zero for as fast as possible
+  const int entriesPerLog = 300;                         // how many entries to store in each log file
 
-  const int numberReadings = 1;                          // number of readings to take from distance sensor to average together for final result
-  const int echoTimeout = (5882 * 4.5);                  // timeout if no echo received from distance sensor (5882 ~ 1m, max = 4.5m)
+  const int numberReadings = 3;                          // number of readings to take from distance sensor to average together for final result
+  const int echoTimeout = (5882 * 2.5);                  // timeout if no echo received from distance sensor (5882 ~ 1m, max = 2.5m)
 
   const int TimeBetweenStatus = 600;                     // speed of flashing system running ok status light (milliseconds)
 
@@ -219,27 +219,30 @@ void loop() {
     if (debugInfo) Serial.println("Distance = " + textDist);
 
   // if distance greater than trigger distance clear the triggered flag to re-enable triggering
-    if (tDist > triggerDistance) {
-      if (camTriggered == 1) digitalWrite(indicatorLED,HIGH);              // indicator led off when flag is cleared
+    if (tDist > triggerDistance && camTriggered == 1) {
+      digitalWrite(indicatorLED,HIGH);              // indicator led off when flag is cleared
       camTriggered = 0;
-      if (debugInfo) Serial.println("Object clear");
+      if (debugInfo) Serial.println("Object cleared");
     }
 
-  // if distance is less than the trigger distance and recording of images is enabled
-    if ( camEnable == 1 && tDist < triggerDistance && tDist > 0) {
-      // if long enough since last trigger and not already triggered store image
+  // if distance is less than the trigger distance 
+    if (tDist < triggerDistance && tDist > 0) {
+      // if long enough since last trigger and not already in trigger state
         if ( camTriggered == 0 && ((unsigned long)(millis() - lastTrigger) >= (minTimeBetweenTriggers * 1000)) ) {
-          storeImage(textDist); 
+          if (camEnable == 1) storeImage(textDist);                        // if camera is enabled store an image on sd card
           digitalWrite(indicatorLED,LOW);                                  // indicator led on
           camTriggered = 1;                                                // flag that camera has been triggered (will not re trigger until this has been cleared)
         }
     }
 
   // add distance to continual logs if logs are enabled and suficient time since last entry
-    if (logEnable == 1 && ((unsigned long)(millis() - logTimer) >= logFrequency)) logDistance(tDist);
+    if (logEnable == 1) {
+      if (logFrequency == 0) logDistance(tDist);                                                              // log as fast as possible
+      else if (logEnable == 1 && ((unsigned long)(millis() - logTimer) >= logFrequency)) logDistance(tDist);  // log if sufficient time since last entry
+    }
     
-  // flash status light to show sketch is running
-    if ((unsigned long)(millis() - lastStatus) >= TimeBetweenStatus) { 
+  // If not in triggered state flash status light to show sketch is running ok
+    if ( camTriggered == 0 && ((unsigned long)(millis() - lastStatus) >= TimeBetweenStatus) ) { 
       lastStatus = millis();                                               // reset timer
       digitalWrite(indicatorLED,!digitalRead(indicatorLED));               // indicator led status change
     }
@@ -374,7 +377,7 @@ void logDistance(int distToLog) {
  
     logTimer = millis();                         // reset timer
   
-    if (distToLog == 0) distToLog = 500;         // if no return signal was received set it to max distance
+    if (distToLog == 0) distToLog = 300;         // if no return signal was received set it to max distance
 
     logsDist[templogCounter] = distToLog;        // add current distance entry to temp log
     logsTime[templogCounter] = millis();         // add current time to temp log
