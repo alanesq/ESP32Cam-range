@@ -9,8 +9,8 @@ was from the cycle along with a image of the passing vehicle.
 
 It takes a distance reading several times a second, if a reading of less than a pre-defined distance is received then an image is captured via
 the camera with the file name including the measured distance.
-It also keeps a continual log of readins in text files in the /log folder on the sd card.  These files consist of distance read in cm and time 
-recorded(in milliseconds)
+It also keeps a continual log of readings in text files in the /log folder on the sd card.  These files consist of distance read in cm and time 
+recorded(in milliseconds).  You can see an example of this in the Images folder.
 
 It will also continually record distance data to text files which can then be imported in to a spreadsheet and graphed etc.
 Note: if you have image recording enabled it takes around 3/4 second to capture and store an image during which distance data can not be captured.
