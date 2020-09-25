@@ -1,6 +1,8 @@
 <p align="center"><img src="/images/esp32cam-range.jpg" width="90%"/></p>
 
 Device to record an image and distance of overtaking vehicles using an ESP32cam module with JSN-SR04T ultrasonic distance sensor using Arduino IDE.
+Although this sketch will probably be a good starting point for any project where you wish to save images to an sd card based on some input/sensor.
+
 
 The idea is to attach the sensor to the right side of a cycle and when any vehicles passes it will record to an sd card the distance the vehicle 
 was from the cycle along with a image of the passing vehicle.  
