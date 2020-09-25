@@ -26,7 +26,7 @@ If it proves to work as I hope the idea is that this will be a very low cost, ea
     Unit                    Cost
     ----                    ----
     ESP32Cam module         5ukp
-    In circuit programmer   2ukp        As the esp32 module does not have it built in
+    In circuit programmer   2ukp        I use this type: https://makeradvisor.com/tools/ftdi-programmer-board/
     Distance sensor         5ukp
     USB power bank          1ukp        e.g. from Poundland
     Misc wires              1ukp
@@ -43,7 +43,8 @@ Build details:
       Trigger   13
       Echo      12
       
-  Insert a formatted sd card, connect a USB power bank to the 5v/GND on the esp32cam module and it is ready to be installed in a case and used.
+  Insert a formatted sd card, connect 5volts (e.g. a USB power bank) to the 5v/GND on the esp32cam module and it is ready to be installed in a case and used.
+  Note: It tends to require a good 5volt supply, if you get strange errors/behaviour this is the first thing to suspect
   
 When the module boots it should give a quick flash on the white flash LED to show all is ok, there is a small red led on the rear of the
 module which should flash continually to show the sketch is running ok or show errors.
