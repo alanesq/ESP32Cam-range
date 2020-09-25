@@ -69,9 +69,11 @@ There may be an issue with the esp32 being 3.3v logic and the sensor 5v, it seem
     Newer versions of the sensor (v2.0) claims to work at either voltage but I have seen several reports of problems when trying
     to use them at 3.3v.
     
-The minimum distance the sensor will read is around 20cm
+The minimum distance the sensor will read is around 20cm, I am finding 2.5m about the max distance although it claims to be 4.5?
 
 Using the esp32cam module means that there are no free io pins so if you wish to add lcd display, more inputs etc. then you will
     need to look at a different development board.  Or it may be possible to wire directly to the esp32-s module its self
     Possible io pins to consider:    16, 17, 9, 10, 11, 6, 7, 8    
+    
+    
 
