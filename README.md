@@ -71,6 +71,9 @@ There may be an issue with the esp32 being 3.3v logic and the sensor 5v, it seem
     to use them at 3.3v.
     
 The minimum distance the sensor will read is around 20cm, I am finding 2.5m about the max distance although it claims to be 4.5?
+    If the sensor is mounted level with the cycle frame then the side of the cyclist will be around 20cm from this which
+    works out pretty well as this is the minimum distance it will be able to measure.  
+    Note: You will need to subtract 20cm from the readings to give distance between vehicle and cyclist
 
 Using the esp32cam module means that there are no free io pins so if you wish to add lcd display, more inputs etc. then you will
     need to look at a different development board.  Or it may be possible to wire directly to the esp32-s module its self
