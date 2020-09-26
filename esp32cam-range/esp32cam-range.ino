@@ -43,19 +43,22 @@
 // ---------------------------------------------------------------
 
   const String stitle = "ESP32Cam-range";                // title of this sketch
-
-  const String sversion = "25Sep20";                     // Sketch version
+  const String sversion = "26Sep20";                     // Sketch version
 
   const bool debugInfo = 0;                              // show additional debug info. on serial port (1=enabled)
-  
-  const bool camEnable = 0;                              // Enable storing of images (1=enable)
+
+  // Camera related
+  const bool camEnable = 1;                              // Enable storing of images (1=enable)
   const int triggerDistance = 150;                       // distance below which will trigger an image capture (in cm)
   const bool flashRequired = 1;                          // If flash to be used when capturing image (1 = yes)
   const int minTimeBetweenTriggers = 5;                  // minimum time between camera triggers in seconds
-  const framesize_t FRAME_SIZE_IMAGE = FRAMESIZE_XGA;    // Image resolution:   160x120 (QQVGA), 128x160 (QQVGA2), 176x144 (QCIF), 240x176 (HQVGA), 
-                                                         //                     320x240 (QVGA), 400x296 (CIF), 640x480 (VGA, default), 800x600 (SVGA), 
-                                                         //                     1024x768 (XGA), 1280x1024 (SXGA), 1600x1200 (UXGA)
-                                                                                            
+  const framesize_t FRAME_SIZE_IMAGE = FRAMESIZE_XGA;    // Image resolution:   
+                                                         //               default = "const framesize_t FRAME_SIZE_IMAGE = FRAMESIZE_XGA"
+                                                         //               160x120 (QQVGA), 128x160 (QQVGA2), 176x144 (QCIF), 240x176 (HQVGA), 
+                                                         //               320x240 (QVGA), 400x296 (CIF), 640x480 (VGA, default), 800x600 (SVGA), 
+                                                         //               1024x768 (XGA), 1280x1024 (SXGA), 1600x1200 (UXGA)
+
+  // Distance Log related
   const bool logEnable = 1;                              // Store constant log of distance readings (1=enable)
   const bool flashOnLog = 1;                             // if to flash the main LED when log is written to sd card
   const int logFrequency = 0;                            // how often to add distance to continual log file (1000 = 1 second), set to zero for as fast as possible
@@ -70,21 +73,27 @@
 
   const int brightLED = 4;                               // onboard flash LED pin (4)
 
+
   
-// ---------------------------------------------------------------
+// ******************************************************************************************************************
 
 
-#include "camera.h"                         // insert camera related code 
+#include "camera.h"                         // insert camera related code, i.e. "camera.h" file in same folder as this sketch
 
-#include "soc/soc.h"                        // Used to disable brownout problems
+#include "soc/soc.h"                        // Used to disable brownout detection on 5v power feed
 #include "soc/rtc_cntl_reg.h"      
+
+#include "SD_MMC.h"                         // sd card - see https://randomnerdtutorials.com/esp32-cam-take-photo-save-microsd-card/
+#include <SPI.h>                       
+#include <FS.h>                             // gives file access 
+#define SD_CS 5                             // sd chip select pin = 5
   
 // Define ultrasonic range sensor pins (jsn-sr04t)     13/12
 //    Note: Pin 13 is the only fully available io pin when using an sd card (must be in 1 wire mode), 12 can be used but must be low at boot
   const int trigPin = 13;
   const int echoPin = 12;
 
-// Define variables:
+// Define global variables:
   bool camTriggered = 0;                    // flag if camera has been triggered
   int logsDist[entriesPerLog];              // log file temp store of distance readings
   uint32_t logsTime[entriesPerLog];         // log file temp store of time readings (millis)
@@ -95,11 +104,6 @@
   uint32_t lastStatus = millis();           // last time status light changed status (to flash all ok led)
   uint32_t logTimer = millis();             // last time log entry was stored
 
-// sd card - see https://randomnerdtutorials.com/esp32-cam-take-photo-save-microsd-card/
-  #include "SD_MMC.h"
-  #include <SPI.h>                       
-  #include <FS.h>                           // gives file access 
-  #define SD_CS 5                           // sd chip select pin
 
 
 // ******************************************************************************************************************
@@ -153,13 +157,12 @@ void setup() {
 
   fs::FS &fs = SD_MMC;                    // sd card file system
   
-  if (logEnable) {
-    int tq=fs.mkdir("/log");        // create the "/log" folder on sd card
-    if (!tq) Serial.println("Error creating LOG folder on sd card");
-  }
+  // discover number of image files stored /img of sd card and set image file counter accordingly
+  if (camEnable) {
+    int tq=fs.mkdir("/img");              // create the "/img" folder on sd card if not already there
+    if (!tq) Serial.println("Unable to create IMG folder on sd card");
     
-  // discover number of image files stored on root of sd card and set image file counter accordingly
-    File root = fs.open("/");
+    File root = fs.open("/img");
     while (true)
     {
       File entry =  root.openNextFile();
@@ -169,10 +172,15 @@ void setup() {
     }
     root.close();
     Serial.println("Image file count = " + String(imageCounter));
+  }
 
- // discover number of log files stored in /log of sd card and set log file counter accordingly
+  // discover number of log files stored in /log of sd card and set log file counter accordingly
+  if (logEnable) {
+    int tq=fs.mkdir("/log");              // create the "/log" folder on sd card if not already there
+    if (!tq) Serial.println("Unable to create LOG folder on sd card");
+    
     if (logEnable) {
-      root = fs.open("/log");
+      File root = fs.open("/log");
       while (true)
       {
         File entry =  root.openNextFile();
@@ -183,21 +191,26 @@ void setup() {
       root.close();
       Serial.println("Log file count = " + String(logCounter));
     }
+  }
 
-  // redefine io pins as sd card seems to upset some of them
+  // re-define io pins as sd card config. seems to reset some of them
     pinMode(brightLED, OUTPUT);
     pinMode(indicatorLED, OUTPUT);
     pinMode(trigPin, OUTPUT);
     pinMode(echoPin, INPUT);
 
-  if (!psramFound()) Serial.println("Warning: No PSRam found");
+  if (!psramFound()) {
+    Serial.println("Warning: No PSRam found so defaulting to image size 'CIF'");
+    framesize_t FRAME_SIZE_IMAGE = FRAMESIZE_CIF;
+  }
 
-  // flash to show started ok
+  // check distance sensor
     digitalWrite(brightLED,HIGH);  // turn flash on
-    delay(200);
-    digitalWrite(brightLED,LOW);  // turn flash off
-
-  // storeImage("startup");        // capture and store a live image
+    if (readDistance(20) == 0) {
+      Serial.println("Distance sensor may be faulty - no echo being received");
+      delay(1000);                 // delay before turning flash off to show there may be a problem
+    } 
+    digitalWrite(brightLED,LOW);   // turn flash off
   
 }
 
@@ -225,7 +238,7 @@ void loop() {
       if (debugInfo) Serial.println("Object cleared");
     }
 
-  // if distance is less than the trigger distance 
+  // if distance measured is less than the trigger distance 
     if (tDist < triggerDistance && tDist > 0) {
       // if long enough since last trigger and not already in trigger state
         if ( camTriggered == 0 && ((unsigned long)(millis() - lastTrigger) >= (minTimeBetweenTriggers * 1000)) ) {
@@ -237,14 +250,14 @@ void loop() {
 
   // add distance to continual logs if logs are enabled and suficient time since last entry
     if (logEnable == 1) {
-      if (logFrequency == 0) logDistance(tDist);                                                              // log as fast as possible
-      else if (logEnable == 1 && ((unsigned long)(millis() - logTimer) >= logFrequency)) logDistance(tDist);  // log if sufficient time since last entry
+      if (logFrequency == 0) logDistance(tDist);                                               // log as frequently as possible
+      else if ((unsigned long)(millis() - logTimer) >= logFrequency) logDistance(tDist);       // only log if sufficient time since last entry
     }
     
   // If not in triggered state flash status light to show sketch is running ok
     if ( camTriggered == 0 && ((unsigned long)(millis() - lastStatus) >= TimeBetweenStatus) ) { 
       lastStatus = millis();                                               // reset timer
-      digitalWrite(indicatorLED,!digitalRead(indicatorLED));               // indicator led status change
+      digitalWrite(indicatorLED,!digitalRead(indicatorLED));               // flip indicator led status
     }
     
 }
@@ -281,7 +294,8 @@ int readDistance(int noReps) {
     
   }   // for loop
 
-  if (distance > 0) distance = distance / ( noReps - noReadingCounter);      // calculate average, avoiding divide by zero if failed to get a reading
+  // calculate average, avoiding divide by zero if failed to get a reading
+    if (distance > 0) distance = distance / ( noReps - noReadingCounter);   
 
   return distance;
 }
@@ -302,8 +316,10 @@ void flashLED(int reps) {
 }
 
 
+// ******************************************************************************************************************
 
-// critical error - stop and flash error status on led
+
+// critical error - stop sketch and continually flash error status on led
 
 void showError(int errorNo) {
   while(1) {
@@ -316,49 +332,47 @@ void showError(int errorNo) {
 // ******************************************************************************************************************
 
 
-// save image to sd card
-//    iTitle = add to end of title of file
+// save live camera image to sd card
+//    iTitle = add to end of the file name
 
 
 void storeImage(String iTitle) {
     
-  // if (!camEnable) return;                        // if logs disabled do nothing
-
   lastTrigger = millis();                           // reset timer
 
   if (debugInfo) Serial.println("Storing image #" + String(imageCounter) + " to sd card");
 
-  fs::FS &fs = SD_MMC;           // sd card file system
+  fs::FS &fs = SD_MMC;                              // sd card file system
 
   // capture live image from camera
-    // cameraImageSettings();                            // apply camera sensor settings (in camera.h)
+    // cameraImageSettings();                         // apply camera sensor settings (in camera.h)
   if (flashRequired) digitalWrite(brightLED,HIGH);  // turn flash on
-  camera_fb_t *fb = esp_camera_fb_get();            // capture frame from camera
+  camera_fb_t *fb = esp_camera_fb_get();            // capture image frame from camera
   digitalWrite(brightLED,LOW);                      // turn flash off
   if (!fb) {
-    Serial.println("Camera capture failed");
+    Serial.println("Error: Camera capture failed");
     flashLED(5);
   }
 
-  // take a distance reading and add to file name
+  // take another distance reading and add to file name
     int tdist = readDistance(numberReadings);       // distance in cm
     iTitle += "(" + String(tdist) + "cm)";
   
-  // save image
-    imageCounter ++;                                                          // increment image counter
-    String SDfilename = "/" + String(imageCounter) + "-" + iTitle + ".jpg";   // create image file name
-    File file = fs.open(SDfilename, FILE_WRITE);                              // create file on sd card
+  // save the image to sd card
+    imageCounter ++;                                                              // increment image counter
+    String SDfilename = "/img/" + String(imageCounter) + "-" + iTitle + ".jpg";   // build the image file name
+    File file = fs.open(SDfilename, FILE_WRITE);                                  // create file on sd card
     if (!file) {
       Serial.println("Error: Failed to create file on sd-card: " + SDfilename);
       flashLED(6);
-    }
-    else {
-        if (file.write(fb->buf, fb->len)) Serial.println("Saved image to sd card");   // save image to file
-        else {
-          Serial.println("Error: failed to save image to sd card");
-          flashLED(5);
-        }
-        file.close();                // close image file on sd card
+    } else {
+      if (file.write(fb->buf, fb->len)) {                                         // File created ok so save image to it
+        if (debugInfo) Serial.println("Image saved to sd card"); 
+      } else {
+        Serial.println("Error: failed to save image to sd card");
+        flashLED(5);
+      }
+      file.close();                // close image file on sd card
     }
     esp_camera_fb_return(fb);        // return frame so memory can be released
 
@@ -372,35 +386,37 @@ void storeImage(String iTitle) {
 //    distToLog = the distance to add to the logs
 
 void logDistance(int distToLog) {
-
-    // if (!logEnable) return;                       // if logs disabled do nothing
  
     logTimer = millis();                         // reset timer
   
-    if (distToLog == 0) distToLog = 300;         // if no return signal was received set it to max distance
+    if (distToLog == 0) distToLog = 500;         // if no return signal was received set it to max distance
 
     logsDist[templogCounter] = distToLog;        // add current distance entry to temp log
     logsTime[templogCounter] = millis();         // add current time to temp log
     templogCounter++;                            // increment temp log store counter
         
-    if (templogCounter == entriesPerLog) {     
-      // store to temp log entries to sd card
-        if (debugInfo) Serial.println("Writing log to sd card");
-        
-    // flash to show new log file created on sd card
-    if (flashOnLog) {
-        digitalWrite(brightLED,HIGH);  // turn flash on
-        delay(20);
-        digitalWrite(brightLED,LOW);  // turn flash off
-    }
-        
-      fs::FS &fs = SD_MMC;                 // sd card file system
-      templogCounter = 0;                  // reset temp log counter     
-      logCounter++;                        // increment log file name number
-      String logFileName = "/log/log" + String(logCounter) + ".txt";
-      File logFile = fs.open(logFileName, FILE_WRITE);
-      if (logFile) {
-        // store entries in temp log in to new text file on sd card
+    if (templogCounter != entriesPerLog) return; // if temp store is not yet full exit 
+
+    
+    // Temp store is full so write it out to sd card
+
+      if (debugInfo) Serial.println("Writing log to sd card");
+          
+      // flash to show a log file is being written out to sd card
+        if (flashOnLog) {
+            digitalWrite(brightLED,HIGH);        // turn flash on
+            delay(15);
+            digitalWrite(brightLED,LOW);         // turn flash off
+        }
+          
+      fs::FS &fs = SD_MMC;                       // sd card file system
+      templogCounter = 0;                        // reset temp log counter     
+      logCounter++;                              // increment log file name number
+      
+      String logFileName = "/log/log" + String(logCounter) + ".txt";         // build file name to use
+      File logFile = fs.open(logFileName, FILE_WRITE);                       // create new file on sd card
+      if (logFile) {                                                         // if file was created ok    
+        // Write log entries out to file on sd card
         for (int x=0; x < entriesPerLog; x++) {
           logFile.print(String(logsDist[x]));
           logFile.print(",");
@@ -410,11 +426,9 @@ void logDistance(int distToLog) {
       } 
       else {
         // error creating new log file
-        Serial.println("Error creating log file: " + logFileName);
-        flashLED(7);
+          Serial.println("Error creating log file: " + logFileName);
+          flashLED(7);
       }
-  }
-
   
 }
 
