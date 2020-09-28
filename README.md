@@ -33,6 +33,7 @@ If it proves to work as I hope the idea is that this will be a very low cost, ea
     It also requires an sd card to store the data on and a case of some kind.
     
     Note: you can use an Arduino as a programmer if you wish, see: https://pre-processing.com/how-to-configure-the-esp32-cam-with-arduino-uno/
+          or you can buy a programmer which would make it much easier: https://www.tindie.com/products/bitluni/cam-prog/
   
 Build details:
   The esp32cam module requires the code installing which if you are not experienced with Arduino IDE can be a bit of a challenge but apart from this
