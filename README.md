@@ -82,5 +82,5 @@ Using the esp32cam module means that there are no free io pins so if you wish to
     need to look at a different development board.  Or it may be possible to wire directly to the esp32-s module its self
     Possible io pins to consider:    16, 17, 9, 10, 11, 6, 7, 8    
     
-    
+Another design which may be of interest:  http://oldgreycells.blogspot.com/search/label/%23nearmissometer
 
